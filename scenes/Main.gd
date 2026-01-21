@@ -10,7 +10,7 @@ extends Node2D
 @onready var end_turn_btn = $CanvasLayer/HUD/BottomBar/EndTurnBtn
 @onready var log_panel = $CanvasLayer/HUD/LogPanel
 @onready var timer_label = $CanvasLayer/HUD/TimerLabel
-@onready var ap_label = $CanvasLayer/HUD/APLabel
+@onready var ap_label = $CanvasLayer/HUD/BottomBar/APLabel
 
 
 # HP Display nodes

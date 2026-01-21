@@ -49,34 +49,15 @@ anchor_left = 1.0
 anchor_top = 1.0
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = -150.0
-offset_top = -60.0
+offset_left = -130.0
+offset_top = -50.0
 offset_right = -20.0
-offset_bottom = -20.0
+offset_bottom = -15.0
 theme_override_colors/font_color = Color(1, 0.85, 0.3, 1)
-theme_override_font_sizes/font_size = 24
+theme_override_font_sizes/font_size = 22
 horizontal_alignment = 2
 vertical_alignment = 1
 text = "⏱️ 30s"
-
-
-[node name="APLabel" type="Label" parent="CanvasLayer/HUD"]
-layout_mode = 1
-anchors_preset = 7
-anchor_left = 0.5
-anchor_top = 1.0
-anchor_right = 0.5
-anchor_bottom = 1.0
-offset_left = -80.0
-offset_top = -180.0
-offset_right = 80.0
-offset_bottom = -150.0
-theme_override_colors/font_color = Color(0.2, 0.95, 1, 1)
-theme_override_colors/font_shadow_color = Color(0, 0.3, 0.4, 0.8)
-theme_override_font_sizes/font_size = 22
-horizontal_alignment = 1
-vertical_alignment = 1
-text = "⚡ AP: 50 / 50"
 
 [node name="BottomBar" type="VBoxContainer" parent="CanvasLayer/HUD"]
 layout_mode = 1
@@ -84,11 +65,19 @@ anchors_preset = 12
 anchor_top = 1.0
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_top = -140.0
+offset_top = -200.0
 grow_horizontal = 2
 grow_vertical = 0
-theme_override_constants/separation = 10
+theme_override_constants/separation = 8
 alignment = 1
+
+[node name="APLabel" type="Label" parent="CanvasLayer/HUD/BottomBar"]
+layout_mode = 2
+size_flags_horizontal = 4
+theme_override_colors/font_color = Color(0.2, 0.95, 1, 1)
+theme_override_font_sizes/font_size = 20
+horizontal_alignment = 1
+text = "⚡ AP: 50 / 50"
 
 [node name="SpellsContainer" type="GridContainer" parent="CanvasLayer/HUD/BottomBar"]
 layout_mode = 2
@@ -99,7 +88,8 @@ theme_override_constants/v_separation = 8
 
 [node name="EndTurnBtn" type="Button" parent="CanvasLayer/HUD/BottomBar"]
 layout_mode = 2
-custom_minimum_size = Vector2(150, 45)
+size_flags_horizontal = 4
+custom_minimum_size = Vector2(180, 40)
 theme_override_font_sizes/font_size = 16
 text = "⏭️ End Turn"
 
