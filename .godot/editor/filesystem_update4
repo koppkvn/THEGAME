@@ -1,1 +1,3 @@
 res://scenes/Main.gd
+res://scripts/Data.gd
+res://scripts/Rules.gd

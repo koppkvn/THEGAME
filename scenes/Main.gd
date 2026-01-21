@@ -333,78 +333,62 @@ func update_ui():
 		c.queue_free()
 	
 	var pid = game_state.turn.currentPlayerId
-	var char_id = "DUELIST" if pid == "P1" else "RANGED"
-	var char_def = Data.CHARACTERS[char_id]
+	# Both players use Ranger class for now
+	var char_id = "RANGER"
 	var unit = game_state.units[pid]
 	
-	# Spell icon paths
-	var spell_icons = {
-		"STRIKE": "res://assets/spells/strike.png",
-		"DASH": "res://assets/spells/dash.png",
-		"GUARD": "res://assets/spells/guard.png",
-		"FORCE": "res://assets/spells/force.png",
-		"SHOT": "res://assets/spells/shot.png",
-		"SNIPE": "res://assets/spells/snipe.png",
-		"BACKSTEP": "res://assets/spells/backstep.png"
-	}
+	# Get spells dynamically from character class
+	var spell_list = Data.get_character_spells(char_id)
 	
-	for spell_id in char_def.spells:
-		var spell = Data.SPELLS[spell_id]
+	for spell_id in spell_list:
+		var spell = Data.get_spell(spell_id)
+		if spell.is_empty(): continue
 		var cd = unit.cooldowns.get(spell_id, 0)
 		
-		# Create container for icon + cooldown
+		# Create container for spell button + cooldown label
 		var container = VBoxContainer.new()
 		container.alignment = BoxContainer.ALIGNMENT_CENTER
 		
-		# Try to load texture, fall back to regular button
-		var texture = null
-		if spell_icons.has(spell_id) and ResourceLoader.exists(spell_icons[spell_id]):
-			texture = load(spell_icons[spell_id])
-		
-		var btn: BaseButton
-		if texture:
-			var tex_btn = TextureButton.new()
-			tex_btn.texture_normal = texture
-			tex_btn.custom_minimum_size = Vector2(64, 64)
-			tex_btn.stretch_mode = TextureButton.STRETCH_KEEP_ASPECT_CENTERED
-			tex_btn.ignore_texture_size = true
-			btn = tex_btn
-		else:
-			# Fallback to regular button with text
-			var text_btn = Button.new()
-			text_btn.text = spell.label
-			text_btn.custom_minimum_size = Vector2(80, 60)
-			btn = text_btn
+		# Use text button (no spell icons available yet)
+		var btn = Button.new()
+		btn.text = spell.label
+		btn.custom_minimum_size = Vector2(100, 50)
+		btn.tooltip_text = spell.desc
 		
 		# Visual states
 		if cd > 0:
 			btn.modulate = Color(0.4, 0.4, 0.4)
+			btn.disabled = true
 		elif selected_spell_id == spell_id:
 			btn.modulate = Color(1.2, 1.2, 0.5)
 		
 		# Disable if not my turn in multiplayer
 		var not_my_turn = multiplayer_mode and game_state.turn.currentPlayerId != my_player_id
 		
-		if game_state.turn.actionTaken or game_state.winner or not_my_turn:
+		if game_state.winner or not_my_turn:
 			btn.modulate = Color(0.4, 0.4, 0.4)
 			btn.disabled = true
-		elif cd > 0:
+		
+		# Check AP cost - disable if not enough AP
+		var ap_cost = spell.get("ap_cost", 0)
+		if game_state.turn.apRemaining < ap_cost:
+			btn.modulate = Color(0.5, 0.3, 0.3)
 			btn.disabled = true
 		
 		btn.pressed.connect(_on_spell_clicked.bind(spell_id))
 		container.add_child(btn)
 		
-		# Cooldown / name label (only if using texture button)
-		if texture:
-			var label = Label.new()
-			if cd > 0:
-				label.text = "CD: %d" % cd
-				label.add_theme_color_override("font_color", Color.RED)
-			else:
-				label.text = spell.label
-			label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-			label.add_theme_font_size_override("font_size", 12)
-			container.add_child(label)
+		# Cooldown / AP cost label
+		var label = Label.new()
+		if cd > 0:
+			label.text = "CD: %d" % cd
+			label.add_theme_color_override("font_color", Color.RED)
+		else:
+			label.text = "%d AP" % ap_cost
+			label.add_theme_color_override("font_color", Color.CYAN)
+		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		label.add_theme_font_size_override("font_size", 11)
+		container.add_child(label)
 		
 		spell_container.add_child(container)
 
@@ -422,8 +406,8 @@ func update_board_visuals():
 	
 	# Range Zone
 	if selected_spell_id:
-		var spell = Data.SPELLS[selected_spell_id]
-		if spell.get("range"):
+		var spell = Data.get_spell(selected_spell_id)
+		if not spell.is_empty() and spell.get("range"):
 			var u = game_state.units[pid]
 			for r in range(Data.BOARD.rows):
 				for c in range(Data.BOARD.cols):
@@ -433,8 +417,8 @@ func update_board_visuals():
 		
 		targets = Rules.get_legal_targets(game_state, pid, selected_spell_id)
 		
-		# For attack spells, calculate blocked cells (in range but no LOS)
-		if spell.get("type") == "ATTACK" and (selected_spell_id == "SHOT" or selected_spell_id == "SNIPE"):
+		# For spells that require LOS, show blocked cells
+		if not spell.is_empty() and spell.get("requires_los", true) and spell.get("type") == "ATTACK":
 			var u = game_state.units[pid]
 			for cell in zone:
 				var is_target = false
