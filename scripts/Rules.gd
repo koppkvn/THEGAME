@@ -165,6 +165,40 @@ static func get_cardinal_direction(from_x: int, from_y: int, to_x: int, to_y: in
 	else:
 		return Vector2i(0, sign(dy)) if dy != 0 else Vector2i(sign(dx), 0)
 
+# Get preview tiles for spell AOE based on spell type and target position
+static func get_aoe_preview_tiles(state: Dictionary, caster_id: String, spell_id: String, target_x: int, target_y: int) -> Array:
+	var spell = Data.get_spell(spell_id)
+	if spell.is_empty(): return []
+	
+	var caster = state.units[caster_id]
+	var aoe_type = spell.get("aoe", "")
+	var tiles = []
+	
+	match aoe_type:
+		"CROSS":
+			tiles = get_cross_tiles(target_x, target_y)
+		"3X3":
+			tiles = get_3x3_tiles(target_x, target_y)
+		"5X5_RANDOM":
+			tiles = get_5x5_tiles(target_x, target_y)
+		"LINE":
+			var dir = get_cardinal_direction(caster.x, caster.y, target_x, target_y)
+			tiles = get_line_tiles(caster.x, caster.y, dir, spell.get("range", 8), false)
+		"CONE":
+			var dir = get_cardinal_direction(caster.x, caster.y, target_x, target_y)
+			tiles = get_cone_tiles(caster.x, caster.y, dir, spell.get("range", 4))
+		_:
+			# Single target spell - just show target tile
+			tiles = [{"x": target_x, "y": target_y}]
+	
+	# Filter to only include in-bounds tiles
+	var valid_tiles = []
+	for tile in tiles:
+		if in_bounds(tile.x, tile.y):
+			valid_tiles.append(tile)
+	
+	return valid_tiles
+
 # =============================================================================
 # STATUS EFFECT SYSTEM
 # =============================================================================
@@ -174,37 +208,67 @@ static func apply_status(unit: Dictionary, effect: String, data: Dictionary) -> 
 	if not unit.status.has(effect) or unit.status[effect] == null:
 		unit.status[effect] = data
 	else:
-		# Stack by refreshing duration to max
-		unit.status[effect].turns = max(unit.status[effect].turns, data.turns)
+		# For damage_reduction, keep highest value
+		if effect == "damage_reduction":
+			if data.percent > unit.status[effect].percent:
+				unit.status[effect] = data
+			else:
+				unit.status[effect].turns = max(unit.status[effect].turns, data.turns)
+		else:
+			# Stack by refreshing duration to max
+			unit.status[effect].turns = max(unit.status[effect].turns, data.turns)
 
 # Check if unit has a specific status
 static func has_status(unit: Dictionary, effect: String) -> bool:
 	return unit.status.has(effect) and unit.status[effect] != null
 
-# Process burn damage at turn start
+# Process burn damage at turn start (ignores armor/damage reduction)
 static func process_burn(state: Dictionary, pid: String) -> void:
 	var unit = state.units[pid]
 	if has_status(unit, "burn"):
 		var burn_dmg = unit.status.burn.damage
+		# Burn ignores armor - apply directly
 		unit.hp = max(0, unit.hp - burn_dmg)
-		push_log(state, "%s burns for %d damage" % [pid, burn_dmg])
+		push_log(state, "%s burns for %d damage (ignores armor)" % [pid, burn_dmg])
 		unit.status.burn.turns -= 1
 		if unit.status.burn.turns <= 0:
 			unit.status.burn = null
 		check_win(state)
 
-# Process bleed damage when unit moves
-static func process_bleed_on_move(state: Dictionary, pid: String) -> void:
+# Process bleed damage at end of turn (10 HP per spec)
+static func process_bleed(state: Dictionary, pid: String) -> void:
 	var unit = state.units[pid]
 	if has_status(unit, "bleed"):
-		var bleed_dmg = unit.status.bleed.damage_on_move
+		var bleed_dmg = 10  # Fixed 10 HP per spec
 		unit.hp = max(0, unit.hp - bleed_dmg)
 		push_log(state, "%s bleeds for %d damage" % [pid, bleed_dmg])
+		unit.status.bleed.turns -= 1
+		if unit.status.bleed.turns <= 0:
+			unit.status.bleed = null
+			push_log(state, "%s: bleed wore off" % pid)
 		check_win(state)
 
-# Check if unit is rooted (cannot move)
+# Check if unit is rooted (cannot move but can attack/use abilities)
 static func is_rooted(unit: Dictionary) -> bool:
 	return has_status(unit, "root")
+
+# Check if unit is stunned (cannot move, attack, or use abilities)
+static func is_stunned(unit: Dictionary) -> bool:
+	return has_status(unit, "stun")
+
+# Check if unit is knocked down (cannot move but can attack/use abilities)
+static func is_knocked_down(unit: Dictionary) -> bool:
+	return has_status(unit, "knocked_down")
+
+# Check if unit has movement loss (loses movement action)
+static func has_movement_loss(unit: Dictionary) -> bool:
+	return has_status(unit, "movement_loss")
+
+# Get damage reduction percentage (0.0 to 1.0)
+static func get_damage_reduction(unit: Dictionary) -> float:
+	if has_status(unit, "damage_reduction"):
+		return unit.status.damage_reduction.percent
+	return 0.0
 
 # Check if unit is slowed (reduced movement)
 static func get_slow_amount(unit: Dictionary) -> float:
@@ -215,7 +279,7 @@ static func get_slow_amount(unit: Dictionary) -> float:
 # Decrement all status effect durations at turn start
 static func tick_status_effects(state: Dictionary, pid: String) -> void:
 	var unit = state.units[pid]
-	var effects_to_check = ["slow", "root", "revealed"]
+	var effects_to_check = ["slow", "root", "revealed", "stun", "knocked_down", "damage_reduction", "movement_loss"]
 	for effect in effects_to_check:
 		if has_status(unit, effect):
 			unit.status[effect].turns -= 1
@@ -288,7 +352,8 @@ static func resolve_delayed_effect(state: Dictionary, effect: Dictionary) -> voi
 # =============================================================================
 
 # Deal damage to a unit at specific coordinates (for AoE)
-static func deal_damage_at(state: Dictionary, x: int, y: int, amount: int, source: String = "") -> bool:
+# Note: For burn damage (which ignores armor), call unit.hp directly instead
+static func deal_damage_at(state: Dictionary, x: int, y: int, amount: int, source: String = "", ignore_reduction: bool = false) -> bool:
 	var target = get_unit_at(state, x, y)
 	if target:
 		var dmg = amount
@@ -297,6 +362,12 @@ static func deal_damage_at(state: Dictionary, x: int, y: int, amount: int, sourc
 			dmg = max(0, dmg - target.status.guard.value)
 			target.status.guard = null
 			push_log(state, "Guard absorbed damage")
+		# Apply damage reduction (percentage-based)
+		if not ignore_reduction and has_status(target, "damage_reduction"):
+			var reduction = get_damage_reduction(target)
+			var reduced_dmg = int(dmg * (1.0 - reduction))
+			push_log(state, "Damage reduced by %d%%" % int(reduction * 100))
+			dmg = reduced_dmg
 		target.hp = max(0, target.hp - dmg)
 		if source != "":
 			push_log(state, "%s hit for %d (%s)" % [target.id, dmg, source])
@@ -392,9 +463,18 @@ static func apply_action(state: Dictionary, action: Dictionary) -> Dictionary:
 		if get_unit_at(next, tx, ty): return state
 		if next.turn.movesRemaining <= 0: return state
 		
-		# Check if rooted - cannot move
+		# Check movement-blocking statuses
+		if is_stunned(me):
+			push_log(next, "%s is stunned and cannot move!" % pid)
+			return state
 		if is_rooted(me):
 			push_log(next, "%s is rooted and cannot move!" % pid)
+			return state
+		if is_knocked_down(me):
+			push_log(next, "%s is knocked down and cannot move!" % pid)
+			return state
+		if has_movement_loss(me):
+			push_log(next, "%s has lost movement this turn!" % pid)
 			return state
 		
 		# Calculate path distance via BFS
@@ -406,14 +486,16 @@ static func apply_action(state: Dictionary, action: Dictionary) -> Dictionary:
 		next.turn.movesRemaining -= path_dist
 		push_log(next, "%s moved to (%d,%d)" % [pid, tx, ty])
 		
-		# Process bleed damage on movement
-		process_bleed_on_move(next, pid)
-		
 		# Movement does NOT end turn - player can still cast spell
 		return next
 
 
 	elif action.type == "CAST":
+		# Check if stunned - cannot use abilities
+		if is_stunned(me):
+			push_log(next, "%s is stunned and cannot act!" % pid)
+			return state
+		
 		var spell_id = action.spellId
 		var target = action.target
 		var spell = Data.get_spell(spell_id)
@@ -615,7 +697,7 @@ static func apply_action(state: Dictionary, action: Dictionary) -> Dictionary:
 					if hit_unit:
 						deal_damage_at(next, tile.x, tile.y, 24, "Cone of Thorns")
 						if hit_unit.hp > 0:
-							apply_status(hit_unit, "bleed", {"turns": 2, "damage_on_move": 10})
+							apply_status(hit_unit, "bleed", {"turns": 2})
 							push_log(next, "%s is bleeding!" % hit_unit.id)
 				return next
 			
@@ -738,6 +820,10 @@ static func handle_turn_end(state):
 	var current = state.turn.currentPlayerId
 	var next_player = "P2" if current == "P1" else "P1"
 	
+	# Process bleed damage at END of current player's turn
+	process_bleed(state, current)
+	if state.winner != null: return
+	
 	# Process pending delayed effects at end of turn
 	process_pending_effects(state)
 	if state.winner != null: return
@@ -751,7 +837,13 @@ static func handle_turn_end(state):
 	var p_unit = state.units[next_player]
 	p_unit.status.guard = null
 	
-	# Process burn damage at start of new player's turn
+	# Apply slow: reduce movement by percentage (rounded down)
+	if has_status(p_unit, "slow"):
+		var reduction = get_slow_amount(p_unit)
+		state.turn.movesRemaining = int(float(Data.MAX_MP) * (1.0 - reduction))
+		push_log(state, "%s is slowed! (%d movement)" % [next_player, state.turn.movesRemaining])
+	
+	# Process burn damage at start of new player's turn (ignores armor)
 	process_burn(state, next_player)
 	if state.winner != null: return
 	
@@ -767,6 +859,11 @@ static func get_legal_moves(state: Dictionary, pid: String) -> Array:
 	if state.turn.movesRemaining <= 0: return []
 	
 	var me = state.units[pid]
+	
+	# Check movement-blocking statuses
+	if is_stunned(me) or is_rooted(me) or is_knocked_down(me) or has_movement_loss(me):
+		return []
+	
 	var max_dist = state.turn.movesRemaining
 	var moves = []
 	

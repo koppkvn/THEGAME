@@ -250,10 +250,14 @@ static func create_initial_state() -> Dictionary:
 				"status": {
 					"guard": null,
 					"burn": null,      # { "turns": int, "damage": int }
-					"bleed": null,     # { "turns": int, "damage_on_move": int }
+					"bleed": null,     # { "turns": int }
 					"slow": null,      # { "turns": int, "amount": float }
 					"root": null,      # { "turns": int }
-					"revealed": null   # { "turns": int }
+					"revealed": null,  # { "turns": int }
+					"stun": null,      # { "turns": int }
+					"knocked_down": null,  # { "turns": int }
+					"damage_reduction": null,  # { "turns": int, "percent": float }
+					"movement_loss": null  # { "turns": int }
 				},
 				"cooldowns": {}
 			},
@@ -265,7 +269,11 @@ static func create_initial_state() -> Dictionary:
 					"bleed": null,
 					"slow": null,
 					"root": null,
-					"revealed": null
+					"revealed": null,
+					"stun": null,
+					"knocked_down": null,
+					"damage_reduction": null,
+					"movement_loss": null
 				},
 				"cooldowns": {}
 			}

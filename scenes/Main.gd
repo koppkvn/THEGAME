@@ -10,6 +10,7 @@ extends Node2D
 @onready var end_turn_btn = $CanvasLayer/HUD/BottomBar/EndTurnBtn
 @onready var log_panel = $CanvasLayer/HUD/LogPanel
 @onready var timer_label = $CanvasLayer/HUD/TimerLabel
+@onready var ap_label = $CanvasLayer/HUD/APLabel
 
 
 # HP Display nodes
@@ -199,11 +200,12 @@ func _process(delta):
 	if Rules.in_bounds(new_hover.x, new_hover.y):
 		if hovered_tile == null or hovered_tile.x != new_hover.x or hovered_tile.y != new_hover.y:
 			hovered_tile = new_hover
-			board.queue_redraw()
+			# Call update_board_visuals to recalculate AOE preview tiles when hovering
+			update_board_visuals()
 	else:
 		if hovered_tile != null:
 			hovered_tile = null
-			board.queue_redraw()
+			update_board_visuals()
 
 func handle_server_message(text: String):
 	var msg = JSON.parse_string(text)
@@ -317,15 +319,18 @@ func update_ui():
 	
 	# HP Bars
 	p1_hp_bar.value = u1.hp
-	p1_hp_label.text = "%d / 10" % u1.hp
+	p1_hp_label.text = "%d / %d" % [u1.hp, Data.MAX_HP]
 	p2_hp_bar.value = u2.hp
-	p2_hp_label.text = "%d / 10" % u2.hp
+	p2_hp_label.text = "%d / %d" % [u2.hp, Data.MAX_HP]
 	
 	# Log
 	var log_text = ""
 	for msg in game_state.log:
 		log_text += msg + "\n"
 	log_panel.text = log_text
+	
+	# AP Display
+	ap_label.text = "AP: %d / %d" % [game_state.turn.apRemaining, Data.MAX_AP]
 
 	
 	# Spells Buttons (Rebuild on turn change or selection)
@@ -428,8 +433,19 @@ func update_board_visuals():
 						break
 				if not is_target:
 					blocked_cells.append(cell)
+	
+	# Calculate AOE preview if hovering a valid target with spell selected
+	var aoe_preview = []
+	if selected_spell_id and hovered_tile:
+		var is_valid_target = false
+		for t in targets:
+			if t.x == hovered_tile.x and t.y == hovered_tile.y:
+				is_valid_target = true
+				break
+		if is_valid_target:
+			aoe_preview = Rules.get_aoe_preview_tiles(game_state, pid, selected_spell_id, hovered_tile.x, hovered_tile.y)
 		
-	board.update_visuals(game_state, moves, targets, selected_spell_id, zone, hovered_tile, blocked_cells)
+	board.update_visuals(game_state, moves, targets, selected_spell_id, zone, hovered_tile, blocked_cells, aoe_preview)
 
 func update_units_visuals():
 	if not game_state:
