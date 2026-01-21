@@ -6,8 +6,6 @@ const BOARD = {
 	"ring_out": true
 }
 
-
-
 const OBSTACLES = [
 	{"x": 4, "y": 4},
 	{"x": 5, "y": 4},
