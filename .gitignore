@@ -1,0 +1,28 @@
+# Godot 4+ specific ignores
+.godot/
+
+# Godot-specific ignores
+*.translation
+
+# Imported resources (auto-generated on import)
+.import/
+
+# Export templates and builds
+export/
+*.exe
+*.x86_64
+*.pck
+
+# Mono-specific ignores (if using C#)
+.mono/
+data_*/
+mono_crash.*.json
+
+# OS-specific
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+*.swp
+*.swo
