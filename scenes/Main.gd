@@ -63,9 +63,6 @@ const SERVER_URL = "wss://thegame-production.up.railway.app"
 
 
 func _ready():
-	# Window setup
-	get_window().size = Vector2i(1024, 768)
-	
 	# Connect Signals
 	end_turn_btn.pressed.connect(_on_end_turn_pressed)
 	get_viewport().size_changed.connect(_on_viewport_resized)

@@ -66,9 +66,8 @@ static func get_path_distance(state: Dictionary, from_x: int, from_y: int, to_x:
 	visited[start_key] = true
 	queue.append({"x": from_x, "y": from_y, "dist": 0})
 	
-	# 8 directions including diagonals
-	var dirs = [Vector2i(0, 1), Vector2i(0, -1), Vector2i(1, 0), Vector2i(-1, 0),
-				Vector2i(1, 1), Vector2i(1, -1), Vector2i(-1, 1), Vector2i(-1, -1)]
+	# 4 cardinal directions only (no diagonals)
+	var dirs = [Vector2i(0, 1), Vector2i(0, -1), Vector2i(1, 0), Vector2i(-1, 0)]
 	
 
 	while queue.size() > 0:
@@ -79,8 +78,8 @@ static func get_path_distance(state: Dictionary, from_x: int, from_y: int, to_x:
 			var ny = current.y + d.y
 			var key = "%d,%d" % [nx, ny]
 			
-			# Diagonal costs 2, cardinal costs 1
-			var move_cost = 2 if (d.x != 0 and d.y != 0) else 1
+			# All cardinal moves cost 1
+			var move_cost = 1
 			var new_dist = current.dist + move_cost
 			
 			if visited.has(key): continue
@@ -107,9 +106,8 @@ static func find_movement_path(state: Dictionary, from_x: int, from_y: int, to_x
 	visited[start_key] = 0
 	queue.append({"x": from_x, "y": from_y, "dist": 0})
 	
-	# 8 directions including diagonals
-	var dirs = [Vector2i(0, 1), Vector2i(0, -1), Vector2i(1, 0), Vector2i(-1, 0),
-				Vector2i(1, 1), Vector2i(1, -1), Vector2i(-1, 1), Vector2i(-1, -1)]
+	# 4 cardinal directions only (no diagonals)
+	var dirs = [Vector2i(0, 1), Vector2i(0, -1), Vector2i(1, 0), Vector2i(-1, 0)]
 	
 	var found = false
 	while queue.size() > 0 and not found:
@@ -121,9 +119,8 @@ static func find_movement_path(state: Dictionary, from_x: int, from_y: int, to_x
 			var ny = current.y + d.y
 			var key = "%d,%d" % [nx, ny]
 			
-			# Diagonal costs 2, cardinal costs 1
-			var move_cost = 2 if (d.x != 0 and d.y != 0) else 1
-			var new_dist = current.dist + move_cost
+			# All cardinal moves cost 1
+			var new_dist = current.dist + 1
 			
 			if visited.has(key) and visited[key] <= new_dist: continue
 			if not in_bounds(nx, ny): continue
@@ -931,9 +928,8 @@ static func get_legal_moves(state: Dictionary, pid: String) -> Array:
 	visited[start_key] = 0
 	queue.append({"x": me.x, "y": me.y, "dist": 0})
 	
-	# 8 directions including diagonals
-	var dirs = [Vector2i(0, 1), Vector2i(0, -1), Vector2i(1, 0), Vector2i(-1, 0),
-				Vector2i(1, 1), Vector2i(1, -1), Vector2i(-1, 1), Vector2i(-1, -1)]
+	# 4 cardinal directions only (no diagonals)
+	var dirs = [Vector2i(0, 1), Vector2i(0, -1), Vector2i(1, 0), Vector2i(-1, 0)]
 	
 
 	while queue.size() > 0:
@@ -943,8 +939,8 @@ static func get_legal_moves(state: Dictionary, pid: String) -> Array:
 			var nx = current.x + d.x
 			var ny = current.y + d.y
 			
-			# Diagonal costs 2, cardinal costs 1
-			var move_cost = 2 if (d.x != 0 and d.y != 0) else 1
+			# All cardinal moves cost 1
+			var move_cost = 1
 			var new_dist = current.dist + move_cost
 			var key = "%d,%d" % [nx, ny]
 			
