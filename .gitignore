@@ -12,6 +12,7 @@ export/
 *.exe
 *.x86_64
 *.pck
+!docs/*.pck
 
 # Mono-specific ignores (if using C#)
 .mono/
