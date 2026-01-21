@@ -824,6 +824,10 @@ static func handle_turn_end(state):
 	process_bleed(state, current)
 	if state.winner != null: return
 	
+	# Tick down status effect durations at END of current player's turn
+	# This way effects like root/stun last through the affected player's full turn
+	tick_status_effects(state, current)
+	
 	# Process pending delayed effects at end of turn
 	process_pending_effects(state)
 	if state.winner != null: return
@@ -846,9 +850,6 @@ static func handle_turn_end(state):
 	# Process burn damage at start of new player's turn (ignores armor)
 	process_burn(state, next_player)
 	if state.winner != null: return
-	
-	# Tick down status effect durations
-	tick_status_effects(state, next_player)
 	
 	# Decrement cooldowns
 	for key in p_unit.cooldowns:

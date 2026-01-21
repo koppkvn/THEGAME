@@ -576,6 +576,10 @@ function handleTurnEnd(state) {
   processBleed(state, current);
   if (state.winner) return;
 
+  // Tick down status effect durations at END of current player's turn
+  // This way effects like root/stun last through the affected player's full turn
+  tickStatusEffects(state, current);
+
   // Process pending delayed effects
   processPendingEffects(state);
   if (state.winner) return;
@@ -601,9 +605,6 @@ function handleTurnEnd(state) {
   // Process burn at start of new player's turn
   processBurn(state, nextPlayer);
   if (state.winner) return;
-
-  // Tick status effects
-  tickStatusEffects(state, nextPlayer);
 
   // Decrement cooldowns
   for (const key in pUnit.cooldowns) {

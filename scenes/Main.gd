@@ -377,8 +377,8 @@ func update_ui():
 		
 		# Check AP cost - disable if not enough AP
 		var ap_cost = spell.get("ap_cost", 0)
-		var ap_remaining = game_state.turn.get("apRemaining", Data.MAX_AP)
-		if ap_remaining < ap_cost:
+		var current_ap = game_state.turn.get("apRemaining", Data.MAX_AP)
+		if current_ap < ap_cost:
 			btn.modulate = Color(0.5, 0.3, 0.3)
 			btn.disabled = true
 		
@@ -532,6 +532,10 @@ func try_action_at(x, y):
 				send_action(action)
 			else:
 				apply_action(action)
+		else:
+			# Clicked outside valid targets - deselect spell
+			selected_spell_id = null
+			update_all()
 
 	else:
 		var moves = Rules.get_legal_moves(game_state, pid)
