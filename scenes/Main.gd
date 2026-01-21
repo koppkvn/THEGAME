@@ -25,6 +25,13 @@ var lobby_panel: Control
 var room_code_input: LineEdit
 var status_label: Label
 
+# Game Over UI
+var game_over_panel: Control
+
+# Custom Spell Tooltip
+var spell_tooltip: Panel
+var spell_tooltip_label: RichTextLabel
+
 var UnitScene = preload("res://scenes/Unit.gd") 
 # Note: Since Unit.gd is a script, we can just instantiate a Node2D and attach script, 
 # or loop through children. For simplicity, we'll just create Node2D and set script.
@@ -58,6 +65,9 @@ func _ready():
 	# Connect Signals
 	end_turn_btn.pressed.connect(_on_end_turn_pressed)
 	get_viewport().size_changed.connect(_on_viewport_resized)
+	
+	# Create custom spell tooltip
+	create_spell_tooltip()
 	
 	# Show lobby first
 	show_lobby()
@@ -150,6 +160,7 @@ func _on_join_room():
 func _on_play_offline():
 	multiplayer_mode = false
 	lobby_panel.queue_free()
+	game_over_panel = null
 	$CanvasLayer/HUD.visible = true
 	game_state = Data.create_initial_state()
 	call_deferred("update_all")
@@ -311,6 +322,9 @@ func update_ui():
 				turn_label.text = "YOU LOSE 😢"
 		else:
 			turn_label.text = "WINNER: %s" % game_state.winner
+		# Show game over popup
+		if game_over_panel == null:
+			show_game_over_popup()
 		
 	var u1 = game_state.units.P1
 	var u2 = game_state.units.P2
@@ -331,7 +345,7 @@ func update_ui():
 	
 	# AP Display
 	var ap_remaining = game_state.turn.get("apRemaining", Data.MAX_AP)
-	ap_label.text = "AP: %d / %d" % [ap_remaining, Data.MAX_AP]
+	ap_label.text = "⚡ AP: %d / %d" % [ap_remaining, Data.MAX_AP]
 
 	
 	# Spells Buttons (Rebuild on turn change or selection)
@@ -359,7 +373,10 @@ func update_ui():
 		var btn = Button.new()
 		btn.text = spell.label
 		btn.custom_minimum_size = Vector2(100, 50)
-		btn.tooltip_text = spell.desc
+		
+		# Custom tooltip on hover (replaces tooltip_text)
+		btn.mouse_entered.connect(show_spell_tooltip.bind(container, spell.desc))
+		btn.mouse_exited.connect(hide_spell_tooltip)
 		
 		# Visual states
 		if cd > 0:
@@ -603,3 +620,141 @@ func spawn_damage_popup(pid: String, damage: int):
 	tween.tween_property(label, "position:y", label.position.y - 50, 1.0)
 	tween.tween_property(label, "modulate:a", 0.0, 1.0)
 	tween.chain().tween_callback(label.queue_free)
+
+# =============================================================================
+# GAME OVER POPUP
+# =============================================================================
+
+func show_game_over_popup():
+	game_over_panel = Panel.new()
+	game_over_panel.custom_minimum_size = Vector2(350, 200)
+	game_over_panel.set_anchors_preset(Control.PRESET_CENTER)
+	game_over_panel.set_anchor_and_offset(SIDE_LEFT, 0.5, -175)
+	game_over_panel.set_anchor_and_offset(SIDE_RIGHT, 0.5, 175)
+	game_over_panel.set_anchor_and_offset(SIDE_TOP, 0.5, -100)
+	game_over_panel.set_anchor_and_offset(SIDE_BOTTOM, 0.5, 100)
+	
+	var vbox = VBoxContainer.new()
+	vbox.set_anchors_preset(Control.PRESET_FULL_RECT)
+	vbox.set_anchor_and_offset(SIDE_LEFT, 0, 20)
+	vbox.set_anchor_and_offset(SIDE_RIGHT, 1, -20)
+	vbox.set_anchor_and_offset(SIDE_TOP, 0, 20)
+	vbox.set_anchor_and_offset(SIDE_BOTTOM, 1, -20)
+	vbox.add_theme_constant_override("separation", 20)
+	vbox.alignment = BoxContainer.ALIGNMENT_CENTER
+	
+	# Winner message
+	var title = Label.new()
+	if multiplayer_mode:
+		if game_state.winner == my_player_id:
+			title.text = "🎉 YOU WIN! 🎉"
+			title.add_theme_color_override("font_color", Color.GREEN)
+		else:
+			title.text = "💀 GAME OVER 💀"
+			title.add_theme_color_override("font_color", Color.RED)
+	else:
+		title.text = "🏆 %s WINS! 🏆" % game_state.winner
+		title.add_theme_color_override("font_color", Color.GOLD)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 28)
+	vbox.add_child(title)
+	
+	# Play Again button
+	var restart_btn = Button.new()
+	restart_btn.text = "Play Again"
+	restart_btn.custom_minimum_size = Vector2(200, 50)
+	restart_btn.pressed.connect(_on_restart_game)
+	vbox.add_child(restart_btn)
+	
+	game_over_panel.add_child(vbox)
+	$CanvasLayer.add_child(game_over_panel)
+
+func _on_restart_game():
+	# Clean up game over popup
+	if game_over_panel:
+		game_over_panel.queue_free()
+		game_over_panel = null
+	
+	# Clear unit nodes for fresh start
+	for pid in unit_nodes.keys():
+		unit_nodes[pid].queue_free()
+	unit_nodes.clear()
+	
+	if multiplayer_mode:
+		# Request restart from server
+		if connected:
+			socket.send_text(JSON.stringify({"type": "RESTART_REQUEST"}))
+	else:
+		# Offline: Reset game state directly
+		game_state = Data.create_initial_state()
+		turn_time_remaining = TURN_DURATION
+		selected_spell_id = null
+		update_all()
+
+# =============================================================================
+# CUSTOM SPELL TOOLTIP
+# =============================================================================
+
+func create_spell_tooltip():
+	spell_tooltip = Panel.new()
+	spell_tooltip.visible = false
+	spell_tooltip.z_index = 100
+	
+	# Black background style
+	var style = StyleBoxFlat.new()
+	style.bg_color = Color(0.1, 0.1, 0.1, 0.95)
+	style.border_width_left = 2
+	style.border_width_right = 2
+	style.border_width_top = 2
+	style.border_width_bottom = 2
+	style.border_color = Color(0.4, 0.4, 0.4)
+	style.corner_radius_top_left = 4
+	style.corner_radius_top_right = 4
+	style.corner_radius_bottom_left = 4
+	style.corner_radius_bottom_right = 4
+	style.content_margin_left = 10
+	style.content_margin_right = 10
+	style.content_margin_top = 8
+	style.content_margin_bottom = 8
+	spell_tooltip.add_theme_stylebox_override("panel", style)
+	
+	# White text label
+	spell_tooltip_label = RichTextLabel.new()
+	spell_tooltip_label.bbcode_enabled = true
+	spell_tooltip_label.fit_content = true
+	spell_tooltip_label.set_anchors_preset(Control.PRESET_FULL_RECT)
+	spell_tooltip_label.add_theme_color_override("default_color", Color.WHITE)
+	spell_tooltip_label.add_theme_font_size_override("normal_font_size", 14)
+	spell_tooltip.add_child(spell_tooltip_label)
+	
+	$CanvasLayer.add_child(spell_tooltip)
+
+func show_spell_tooltip(container: Control, desc: String):
+	if not spell_tooltip:
+		return
+	
+	spell_tooltip_label.text = desc
+	
+	# Calculate size based on text
+	var text_size = spell_tooltip_label.get_content_height()
+	spell_tooltip.custom_minimum_size = Vector2(280, text_size + 20)
+	spell_tooltip.size = spell_tooltip.custom_minimum_size
+	
+	# Position above the spell container's row
+	var global_pos = container.global_position
+	spell_tooltip.global_position = Vector2(
+		global_pos.x - 80,  # Slight left offset to center
+		global_pos.y - spell_tooltip.size.y - 10  # Above the row
+	)
+	
+	# Keep tooltip on screen
+	if spell_tooltip.global_position.x < 0:
+		spell_tooltip.global_position.x = 10
+	if spell_tooltip.global_position.y < 0:
+		spell_tooltip.global_position.y = 10
+	
+	spell_tooltip.visible = true
+
+func hide_spell_tooltip():
+	if spell_tooltip:
+		spell_tooltip.visible = false
