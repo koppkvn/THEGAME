@@ -206,18 +206,23 @@ func _process(delta):
 				_on_end_turn_pressed()
 	
 	# Handle Grid Hover
-	var mouse_pos = get_global_mouse_position()
-	var new_hover = Iso.pixel_to_grid(mouse_pos.x, mouse_pos.y)
-	
-	if Rules.in_bounds(new_hover.x, new_hover.y):
-		if hovered_tile == null or hovered_tile.x != new_hover.x or hovered_tile.y != new_hover.y:
-			hovered_tile = new_hover
-			# Call update_board_visuals to recalculate AOE preview tiles when hovering
-			update_board_visuals()
-	else:
-		if hovered_tile != null:
-			hovered_tile = null
-			update_board_visuals()
+	var allow_hover = not multiplayer_mode or (game_state and game_state.turn.currentPlayerId == my_player_id)
+	if allow_hover:
+		var mouse_pos = get_global_mouse_position()
+		var new_hover = Iso.pixel_to_grid(mouse_pos.x, mouse_pos.y)
+		
+		if Rules.in_bounds(new_hover.x, new_hover.y):
+			if hovered_tile == null or hovered_tile.x != new_hover.x or hovered_tile.y != new_hover.y:
+				hovered_tile = new_hover
+				# Call update_board_visuals to recalculate AOE preview tiles when hovering
+				update_board_visuals()
+		else:
+			if hovered_tile != null:
+				hovered_tile = null
+				update_board_visuals()
+	elif hovered_tile != null:
+		hovered_tile = null
+		update_board_visuals()
 
 func handle_server_message(text: String):
 	var msg = JSON.parse_string(text)
@@ -247,11 +252,25 @@ func handle_server_message(text: String):
 			call_deferred("update_all")
 			
 		"STATE_UPDATE":
+			var old_state = game_state
 			var old_p1_hp = game_state.units.P1.hp if game_state else 10
 			var old_p2_hp = game_state.units.P2.hp if game_state else 10
 			var old_player = game_state.turn.currentPlayerId if game_state else ""
 			
 			game_state = msg.state
+			
+			# Cache movement path for networked move actions (so animations follow tiles)
+			if old_state and old_state.turn and old_state.turn.currentPlayerId == game_state.turn.currentPlayerId:
+				var old_moves = old_state.turn.get("movesRemaining", Data.MAX_MP)
+				var new_moves = game_state.turn.get("movesRemaining", Data.MAX_MP)
+				if new_moves < old_moves:
+					var pid = game_state.turn.currentPlayerId
+					var old_unit = old_state.units[pid]
+					var new_unit = game_state.units[pid]
+					if old_unit.x != new_unit.x or old_unit.y != new_unit.y:
+						var path = Rules.find_movement_path(old_state, old_unit.x, old_unit.y, new_unit.x, new_unit.y)
+						if path.size() > 0:
+							pending_move_paths[pid] = path
 			
 			# Check for damage and spawn popups
 			var new_p1_hp = game_state.units.P1.hp
@@ -421,6 +440,11 @@ func update_ui():
 
 func update_board_visuals():
 	if not game_state:
+		return
+	
+	var not_my_turn = multiplayer_mode and game_state.turn.currentPlayerId != my_player_id
+	if not_my_turn:
+		board.update_visuals(game_state, [], [], null, [], null, [], [], [])
 		return
 		
 	var pid = game_state.turn.currentPlayerId
