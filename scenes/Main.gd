@@ -330,7 +330,8 @@ func update_ui():
 	log_panel.text = log_text
 	
 	# AP Display
-	ap_label.text = "AP: %d / %d" % [game_state.turn.apRemaining, Data.MAX_AP]
+	var ap_remaining = game_state.turn.get("apRemaining", Data.MAX_AP)
+	ap_label.text = "AP: %d / %d" % [ap_remaining, Data.MAX_AP]
 
 	
 	# Spells Buttons (Rebuild on turn change or selection)
@@ -376,7 +377,8 @@ func update_ui():
 		
 		# Check AP cost - disable if not enough AP
 		var ap_cost = spell.get("ap_cost", 0)
-		if game_state.turn.apRemaining < ap_cost:
+		var ap_remaining = game_state.turn.get("apRemaining", Data.MAX_AP)
+		if ap_remaining < ap_cost:
 			btn.modulate = Color(0.5, 0.3, 0.3)
 			btn.disabled = true
 		
