@@ -464,8 +464,20 @@ func update_board_visuals():
 				break
 		if is_valid_target:
 			aoe_preview = Rules.get_aoe_preview_tiles(game_state, pid, selected_spell_id, hovered_tile.x, hovered_tile.y)
+	
+	# Calculate movement path preview if hovering a valid move destination
+	var path_preview = []
+	if not selected_spell_id and hovered_tile:
+		var is_valid_move = false
+		for m in moves:
+			if m.to.x == hovered_tile.x and m.to.y == hovered_tile.y:
+				is_valid_move = true
+				break
+		if is_valid_move:
+			var me = game_state.units[pid]
+			path_preview = Rules.find_movement_path(game_state, me.x, me.y, hovered_tile.x, hovered_tile.y)
 		
-	board.update_visuals(game_state, moves, targets, selected_spell_id, zone, hovered_tile, blocked_cells, aoe_preview)
+	board.update_visuals(game_state, moves, targets, selected_spell_id, zone, hovered_tile, blocked_cells, aoe_preview, path_preview)
 
 func update_units_visuals():
 	if not game_state:

@@ -11,13 +11,14 @@ var selected_spell_id = null
 var range_zone_tiles: Array = []
 var blocked_tiles: Array = []  # Tiles in range but blocked by LOS
 var aoe_preview_tiles: Array = []  # Tiles that will be affected by spell
+var path_preview_tiles: Array = []  # Tiles showing movement path
 var hovered_tile = null
 
 func _ready():
 	# Initial draw
 	queue_redraw()
 
-func update_visuals(state: Dictionary, moves: Array, targets: Array, spell_id, zone: Array, hover, blocked: Array = [], aoe_preview: Array = []) -> void:
+func update_visuals(state: Dictionary, moves: Array, targets: Array, spell_id, zone: Array, hover, blocked: Array = [], aoe_preview: Array = [], path_preview: Array = []) -> void:
 	game_state = state
 	legal_moves = moves
 	valid_targets = targets
@@ -26,6 +27,7 @@ func update_visuals(state: Dictionary, moves: Array, targets: Array, spell_id, z
 	hovered_tile = hover
 	blocked_tiles = blocked
 	aoe_preview_tiles = aoe_preview
+	path_preview_tiles = path_preview
 	queue_redraw()
 
 func _draw():
@@ -90,6 +92,13 @@ func _draw():
 			if Rules.in_bounds(tile.x, tile.y) and not Data.is_obstacle(tile.x, tile.y):
 				# Orange semi-transparent fill for affected area
 				draw_tile(tile.x, tile.y, Color(1.0, 0.6, 0.1, 0.4), Color(1.0, 0.5, 0.0, 0.9), 2.0)
+	
+	# Movement path preview - show path tiles with green/cyan highlight
+	if path_preview_tiles.size() > 0 and game_state.winner == null:
+		for tile in path_preview_tiles:
+			if Rules.in_bounds(tile.x, tile.y) and not Data.is_obstacle(tile.x, tile.y):
+				# Bright cyan/green line for path
+				draw_tile(tile.x, tile.y, Color(0.2, 1.0, 0.6, 0.5), Color(0.2, 1.0, 0.6, 1.0), 3.0)
 
 func is_in_zone(col, row):
 	for z in range_zone_tiles:

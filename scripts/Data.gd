@@ -234,7 +234,7 @@ static func get_spell(spell_id: String) -> Dictionary:
 # Constants for game balance
 const MAX_HP = 100
 const MAX_AP = 50
-const MAX_MP = 3  # Movement points
+const MAX_MP = 5  # Movement points
 
 static func create_initial_state() -> Dictionary:
 	return {

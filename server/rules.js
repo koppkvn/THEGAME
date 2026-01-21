@@ -14,7 +14,7 @@ const OBSTACLES = [
 // Game constants
 const MAX_HP = 100;
 const MAX_AP = 50;
-const MAX_MP = 3;
+const MAX_MP = 5;
 
 // Ranger Spells
 const RANGER_SPELLS = {
