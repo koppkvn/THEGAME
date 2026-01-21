@@ -47,8 +47,7 @@ var waiting_for_opponent: bool = false
 var game_started: bool = false
 
 # Server URL - change this when deploying
-const SERVER_URL = "ws://localhost:3000"
-# For production, use something like: "wss://your-app.railway.app"
+const SERVER_URL = "wss://thegame-production.up.railway.app"
 
 
 func _ready():
@@ -65,12 +64,19 @@ func _ready():
 func show_lobby():
 	# Create lobby panel
 	lobby_panel = Panel.new()
+	lobby_panel.custom_minimum_size = Vector2(400, 350)
 	lobby_panel.set_anchors_preset(Control.PRESET_CENTER)
-	lobby_panel.custom_minimum_size = Vector2(400, 300)
-	lobby_panel.position = Vector2(312, 234)
+	lobby_panel.set_anchor_and_offset(SIDE_LEFT, 0.5, -200)
+	lobby_panel.set_anchor_and_offset(SIDE_RIGHT, 0.5, 200)
+	lobby_panel.set_anchor_and_offset(SIDE_TOP, 0.5, -175)
+	lobby_panel.set_anchor_and_offset(SIDE_BOTTOM, 0.5, 175)
 	
 	var vbox = VBoxContainer.new()
 	vbox.set_anchors_preset(Control.PRESET_FULL_RECT)
+	vbox.set_anchor_and_offset(SIDE_LEFT, 0, 20)
+	vbox.set_anchor_and_offset(SIDE_RIGHT, 1, -20)
+	vbox.set_anchor_and_offset(SIDE_TOP, 0, 20)
+	vbox.set_anchor_and_offset(SIDE_BOTTOM, 1, -20)
 	vbox.add_theme_constant_override("separation", 15)
 	vbox.alignment = BoxContainer.ALIGNMENT_CENTER
 	
@@ -123,8 +129,7 @@ func show_lobby():
 
 func _on_create_room():
 	status_label.text = "Connecting to server..."
-	connect_to_server()
-	await get_tree().create_timer(0.5).timeout
+	await connect_to_server()
 	if connected:
 		socket.send_text(JSON.stringify({"type": "CREATE_ROOM"}))
 		status_label.text = "Creating room..."
@@ -136,8 +141,7 @@ func _on_join_room():
 		return
 	
 	status_label.text = "Connecting to server..."
-	connect_to_server()
-	await get_tree().create_timer(0.5).timeout
+	await connect_to_server()
 	if connected:
 		socket.send_text(JSON.stringify({"type": "JOIN_ROOM", "roomCode": code}))
 		status_label.text = "Joining room..."
@@ -167,8 +171,8 @@ func connect_to_server():
 	status_label.text = "Connection timeout. Check server."
 
 func _process(delta):
-	# Handle WebSocket
-	if multiplayer_mode or waiting_for_opponent:
+	# Handle WebSocket - must poll whenever connected
+	if connected or multiplayer_mode or waiting_for_opponent:
 		socket.poll()
 		while socket.get_available_packet_count() > 0:
 			var packet = socket.get_packet()
