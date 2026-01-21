@@ -45,6 +45,10 @@ const TURN_DURATION: float = 30.0
 # Persistent unit node references for animation
 var unit_nodes: Dictionary = {}
 
+# Movement path animation tracking
+var pending_move_paths: Dictionary = {}  # pid -> Array of path tiles
+var animating_unit: String = ""  # Currently animating unit ID
+
 # --- MULTIPLAYER ---
 var socket: WebSocketPeer = WebSocketPeer.new()
 var multiplayer_mode: bool = false
@@ -494,11 +498,30 @@ func update_units_visuals():
 			u_node.unit_data = unit_data
 			u_node.queue_redraw()
 			
-			var target_pos = Iso.grid_to_screen(unit_data.x, unit_data.y)
-			if u_node.position != target_pos:
-				var tween = create_tween()
-				tween.tween_property(u_node, "position", target_pos, 0.25).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_QUAD)
+			# Check if we have a pending path for this unit
+			if pending_move_paths.has(pid) and pending_move_paths[pid].size() > 0:
+				# Animate through the path tile by tile
+				var path = pending_move_paths[pid]
+				pending_move_paths.erase(pid)
+				animate_path(u_node, path)
+			else:
+				# Fallback: direct movement (for multiplayer sync or non-move actions)
+				var target_pos = Iso.grid_to_screen(unit_data.x, unit_data.y)
+				if u_node.position != target_pos:
+					var tween = create_tween()
+					tween.tween_property(u_node, "position", target_pos, 0.15).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_QUAD)
 
+# Animate unit through each tile in path sequentially
+func animate_path(u_node: Node2D, path: Array) -> void:
+	if path.size() == 0:
+		return
+	
+	var tween = create_tween()
+	var time_per_tile = 0.1  # 100ms per tile for snappy movement
+	
+	for tile in path:
+		var screen_pos = Iso.grid_to_screen(tile.x, tile.y)
+		tween.tween_property(u_node, "position", screen_pos, time_per_tile).set_ease(Tween.EASE_IN_OUT).set_trans(Tween.TRANS_LINEAR)
 
 
 # --- Actions ---
@@ -580,6 +603,14 @@ func apply_action(action):
 	var old_player = game_state.turn.currentPlayerId
 	var old_p1_hp = game_state.units.P1.hp
 	var old_p2_hp = game_state.units.P2.hp
+	
+	# Store path for move actions before applying (so we know the path to animate)
+	if action.type == "MOVE":
+		var pid = action.playerId
+		var me = game_state.units[pid]
+		var path = Rules.find_movement_path(game_state, me.x, me.y, action.to.x, action.to.y)
+		if path.size() > 0:
+			pending_move_paths[pid] = path
 	
 	game_state = Rules.apply_action(game_state, action)
 	

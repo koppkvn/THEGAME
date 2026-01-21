@@ -96,6 +96,62 @@ static func get_path_distance(state: Dictionary, from_x: int, from_y: int, to_x:
 	
 	return -1
 
+# Get the actual path from one tile to another, returning array of positions to walk through
+static func find_movement_path(state: Dictionary, from_x: int, from_y: int, to_x: int, to_y: int) -> Array:
+	if from_x == to_x and from_y == to_y: return []
+	
+	var visited = {}
+	var parent = {}  # Track where we came from for path reconstruction
+	var queue = []
+	var start_key = "%d,%d" % [from_x, from_y]
+	visited[start_key] = 0
+	queue.append({"x": from_x, "y": from_y, "dist": 0})
+	
+	# 8 directions including diagonals
+	var dirs = [Vector2i(0, 1), Vector2i(0, -1), Vector2i(1, 0), Vector2i(-1, 0),
+				Vector2i(1, 1), Vector2i(1, -1), Vector2i(-1, 1), Vector2i(-1, -1)]
+	
+	var found = false
+	while queue.size() > 0 and not found:
+		var current = queue.pop_front()
+		var current_key = "%d,%d" % [current.x, current.y]
+		
+		for d in dirs:
+			var nx = current.x + d.x
+			var ny = current.y + d.y
+			var key = "%d,%d" % [nx, ny]
+			
+			# Diagonal costs 2, cardinal costs 1
+			var move_cost = 2 if (d.x != 0 and d.y != 0) else 1
+			var new_dist = current.dist + move_cost
+			
+			if visited.has(key) and visited[key] <= new_dist: continue
+			if not in_bounds(nx, ny): continue
+			if Data.is_obstacle(nx, ny): continue
+			if get_unit_at(state, nx, ny): continue
+			
+			visited[key] = new_dist
+			parent[key] = current_key
+			
+			if nx == to_x and ny == to_y:
+				found = true
+				break
+			
+			queue.append({"x": nx, "y": ny, "dist": new_dist})
+	
+	if not found:
+		return []
+	
+	# Reconstruct path from destination to start
+	var path = []
+	var current_key = "%d,%d" % [to_x, to_y]
+	while parent.has(current_key):
+		var parts = current_key.split(",")
+		path.push_front({"x": int(parts[0]), "y": int(parts[1])})
+		current_key = parent[current_key]
+	
+	return path
+
 # =============================================================================
 # AOE PATTERN HELPERS
 # =============================================================================
