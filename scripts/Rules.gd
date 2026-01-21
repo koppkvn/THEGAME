@@ -98,7 +98,6 @@ static func apply_action(state: Dictionary, action: Dictionary) -> Dictionary:
 	
 	if next.winner != null: return state
 	if next.turn.currentPlayerId != pid and action.type != "END_TURN": return state
-	if action.type == "CAST" and next.turn.actionTaken: return state
 
 	
 	var me = next.units[pid]
@@ -127,74 +126,49 @@ static func apply_action(state: Dictionary, action: Dictionary) -> Dictionary:
 	elif action.type == "CAST":
 		var spell_id = action.spellId
 		var target = action.target
-		if not Data.SPELLS.has(spell_id): return state
-		var spell = Data.SPELLS[spell_id]
+		var spell = Data.get_spell(spell_id)
+		if spell.is_empty(): return state
 		
+		# Check cooldown
 		if me.cooldowns.get(spell_id, 0) > 0: return state
 		
-		# --- SPELL LOGIC ---
-		if spell_id == "STRIKE":
-			if dist_manhattan(me, target) != 1: return state
-			if target.x != enemy.x or target.y != enemy.y: return state
-			if enemy.hp <= 0: return state
-			
-			me.cooldowns[spell_id] = spell.cooldown
-			next.turn.actionTaken = true
-			push_log(next, "%s casts STRIKE" % pid)
-			resolve_damage(next, me, enemy, spell.damage, "MELEE")
-			return next
-			
-		elif spell_id == "FORCE":
+		# Check AP cost
+		var ap_cost = spell.get("ap_cost", 0)
+		if next.turn.apRemaining < ap_cost: return state
+		
+		# Deduct AP and set cooldown
+		next.turn.apRemaining -= ap_cost
+		me.cooldowns[spell_id] = spell.get("cooldown", 0)
+		push_log(next, "%s casts %s (-%d AP, %d remaining)" % [pid, spell.label, ap_cost, next.turn.apRemaining])
+		
+		# --- SPELL EFFECTS (to be implemented with new spells) ---
+		# Handle different spell types
+		if spell.type == "ATTACK":
 			var d = dist_manhattan(me, target)
-			if d > spell.range or d == 0: return state
-			if target.x != enemy.x or target.y != enemy.y: return state
+			if d > spell.get("range", 1) or d == 0: return state
 			
-			me.cooldowns[spell_id] = spell.cooldown
-			next.turn.actionTaken = true
-			push_log(next, "%s casts FORCE" % pid)
-			resolve_damage(next, me, enemy, spell.damage, "RANGED")
-			if enemy.hp > 0: resolve_push(next, me, enemy)
-			return next
-			
-		elif spell_id == "DASH":
-			# Validation simpler here for brevity, assuming UI filtered correctly
-			me.x = target.x
-			me.y = target.y
-			me.cooldowns[spell_id] = spell.cooldown
-			next.turn.actionTaken = true
-			push_log(next, "%s DASHED" % pid)
-			return next
-			
-		elif spell_id == "GUARD":
-			me.cooldowns[spell_id] = spell.cooldown
-			me.status.guard = { "value": 2 }
-			next.turn.actionTaken = true
-			push_log(next, "%s GUARDS" % pid)
-			return next
-
-		elif spell_id == "SHOT" or spell_id == "SNIPE":
-			var d = abs(me.x - target.x) + abs(me.y - target.y)
-			if d > spell.range or d == 0: return state
-			if not has_line_of_sight_to_cell(me.x, me.y, target.x, target.y): return state
-			
-			me.cooldowns[spell_id] = spell.cooldown
-			next.turn.actionTaken = true
-			push_log(next, "%s casts %s at (%d,%d)" % [pid, spell_id, target.x, target.y])
-			
-			# Only deal damage if enemy is at target location
+			# Check if enemy is at target
 			if target.x == enemy.x and target.y == enemy.y:
-				resolve_damage(next, me, enemy, spell.damage, "RANGED")
+				var damage_type = "MELEE" if spell.get("range", 1) <= 1 else "RANGED"
+				resolve_damage(next, me, enemy, spell.get("damage", 0), damage_type)
+				
+				# Handle push if spell has it
+				if spell.has("push") and enemy.hp > 0:
+					resolve_push(next, me, enemy)
 			else:
-				push_log(next, "Shot missed (no target)")
-			return next
-			
-		elif spell_id == "BACKSTEP":
+				push_log(next, "No target at location")
+				
+		elif spell.type == "MOVE":
+			# Movement spells (like dash)
 			me.x = target.x
 			me.y = target.y
-			me.cooldowns[spell_id] = spell.cooldown
-			next.turn.actionTaken = true
-			push_log(next, "%s BACKSTEPS" % pid)
-			return next
+			
+		elif spell.type == "BUFF":
+			# Self-buff spells
+			if spell.has("guard_value"):
+				me.status.guard = { "value": spell.guard_value }
+		
+		return next
 			
 	elif action.type == "END_TURN":
 		push_log(next, "%s ends turn" % pid)
@@ -268,8 +242,8 @@ static func handle_turn_end(state):
 	
 	state.turn.currentPlayerId = next_player
 	if next_player == "P1": state.turn.number += 1
-	state.turn.actionTaken = false
-	state.turn.movesRemaining = 3
+	state.turn.apRemaining = Data.MAX_AP  # Reset AP each turn
+	state.turn.movesRemaining = Data.MAX_MP  # Reset movement points
 	
 	# Start of turn upkeep
 	var p_unit = state.units[next_player]
@@ -326,59 +300,50 @@ static func get_legal_moves(state: Dictionary, pid: String) -> Array:
 	return moves
 
 static func get_legal_targets(state: Dictionary, pid: String, spell_id: String) -> Array:
-	if state.winner != null or state.turn.currentPlayerId != pid or state.turn.actionTaken: return []
+	if state.winner != null or state.turn.currentPlayerId != pid: return []
+	
+	var spell = Data.get_spell(spell_id)
+	if spell.is_empty(): return []
+	
+	# Check AP cost
+	var ap_cost = spell.get("ap_cost", 0)
+	if state.turn.apRemaining < ap_cost: return []
 	
 	var me = state.units[pid]
 	var enemy_id = "P2" if pid == "P1" else "P1"
 	var enemy = state.units[enemy_id]
-	var spell = Data.SPELLS.get(spell_id)
 	
-	if not spell: return []
+	# Check cooldown
 	if me.cooldowns.get(spell_id, 0) > 0: return []
 	
 	var targets = []
 	
-	if spell_id == "STRIKE" or spell_id == "FORCE":
-		var d = dist_manhattan(me, enemy)
-		if d > 0 and d <= spell.range:
-			if has_line_of_sight(state, me, enemy):
-				targets.append({"x": enemy.x, "y": enemy.y})
-				
-	elif spell_id == "SHOT" or spell_id == "SNIPE":
-		# Allow targeting any cell within range with line of sight
+	# Generic target calculation based on spell type
+	if spell.type == "ATTACK":
+		var spell_range = spell.get("range", 1)
+		# For attack spells, show all valid targets in range with line of sight
 		for r in range(Data.BOARD.rows):
 			for c in range(Data.BOARD.cols):
 				var d = abs(me.x - c) + abs(me.y - r)
-				if d > 0 and d <= spell.range:
+				if d > 0 and d <= spell_range:
 					if not Data.is_obstacle(c, r) and has_line_of_sight_to_cell(me.x, me.y, c, r):
 						targets.append({"x": c, "y": r})
 			
-	elif spell_id == "GUARD":
-		targets.append({"x": me.x, "y": me.y})
-		
-	elif spell_id == "DASH":
-		# Simplified: just check adjacent 1 and 2
+	elif spell.type == "MOVE":
+		# Movement spells - show valid movement destinations
+		var spell_range = spell.get("range", 2)
 		var dirs = [Vector2i(0, 1), Vector2i(0, -1), Vector2i(1, 0), Vector2i(-1, 0)]
 		for d in dirs:
-			var x1 = me.x + d.x
-			var y1 = me.y + d.y
-			if in_bounds(x1, y1) and not get_unit_at(state, x1, y1) and not Data.is_obstacle(x1, y1):
-				targets.append({"x": x1, "y": y1})
-				var x2 = x1 + d.x
-				var y2 = y1 + d.y
-				if in_bounds(x2, y2) and not get_unit_at(state, x2, y2) and not Data.is_obstacle(x2, y2):
-					targets.append({"x": x2, "y": y2})
-					
-	elif spell_id == "BACKSTEP":
-		# Move further away from enemy
-		var current_dist = dist_manhattan(me, enemy)
-		var dirs = [Vector2i(0, 1), Vector2i(0, -1), Vector2i(1, 0), Vector2i(-1, 0)]
-		for d in dirs:
-			var nx = me.x + d.x
-			var ny = me.y + d.y
-			if in_bounds(nx, ny) and not get_unit_at(state, nx, ny) and not Data.is_obstacle(nx, ny):
-				var new_dist = abs(nx - enemy.x) + abs(ny - enemy.y)
-				if new_dist > current_dist:
+			for i in range(1, spell_range + 1):
+				var nx = me.x + d.x * i
+				var ny = me.y + d.y * i
+				if in_bounds(nx, ny) and not get_unit_at(state, nx, ny) and not Data.is_obstacle(nx, ny):
 					targets.append({"x": nx, "y": ny})
+				else:
+					break  # Can't move through obstacles/units
+					
+	elif spell.type == "BUFF":
+		# Self-targeting buffs
+		targets.append({"x": me.x, "y": me.y})
 
 	return targets

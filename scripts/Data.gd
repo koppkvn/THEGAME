@@ -19,73 +19,101 @@ static func is_obstacle(x: int, y: int) -> bool:
 		if o.x == x and o.y == y: return true
 	return false
 
+# =============================================================================
+# SPELLS - Organized by character class
+# =============================================================================
+# Each spell needs: id, label, desc, type, ap_cost, and type-specific properties
+# Types: "ATTACK", "MOVE", "BUFF", "DEBUFF", "HEAL"
 
-const SPELLS = {
-	# Duelist
-	"STRIKE": {
-		"id": "STRIKE", "label": "Strike", "desc": "Melee 3", 
-		"type": "ATTACK", "range": 1, "damage": 2, "cooldown": 0
-	},
-	"DASH": {
-		"id": "DASH", "label": "Dash", "desc": "Move 3", 
-		"type": "MOVE", "range": 2, "cooldown": 2
-	},
-	"GUARD": {
-		"id": "GUARD", "label": "Guard", "desc": "Shield", 
-		"type": "BUFF", "cooldown": 3
-	},
-	"FORCE": {
-		"id": "FORCE", "label": "Force", "desc": "Push 3", 
-		"type": "ATTACK", "range": 2, "damage": 1, "push": 1, "cooldown": 3
-	},
-	
-	# Ranged (Merged Client + Server logic)
-	"SHOT": {
-		"id": "SHOT", "label": "Shot", "desc": "R3 Dmg1", 
-		"type": "ATTACK", "range": 3, "damage": 1, "cooldown": 0
-	},
-	"SNIPE": {
-		"id": "SNIPE", "label": "Snipe", "desc": "R8 Dmg2", 
-		"type": "ATTACK", "range": 8, "damage": 2, "cooldown": 2
-	},
-	"BACKSTEP": {
-		"id": "BACKSTEP", "label": "Backstep", "desc": "Evade", 
-		"type": "MOVE", "cooldown": 1
-	},
-	# NET omitted per source
+# --- RANGER SPELLS ---
+const RANGER_SPELLS = {
+	# Add Ranger spells here
+	# Example:
+	# "ARROW_SHOT": {
+	#     "id": "ARROW_SHOT", "label": "Arrow Shot", "desc": "Basic ranged attack",
+	#     "type": "ATTACK", "range": 5, "damage": 10, "ap_cost": 5, "cooldown": 0
+	# },
 }
 
+# --- WARRIOR SPELLS ---
+const WARRIOR_SPELLS = {
+	# Add Warrior spells here
+	# Example:
+	# "SLASH": {
+	#     "id": "SLASH", "label": "Slash", "desc": "Basic melee attack",
+	#     "type": "ATTACK", "range": 1, "damage": 15, "ap_cost": 5, "cooldown": 0
+	# },
+}
+
+# Combined spells dictionary (auto-merged from character classes)
+static func get_all_spells() -> Dictionary:
+	var all_spells = {}
+	all_spells.merge(RANGER_SPELLS)
+	all_spells.merge(WARRIOR_SPELLS)
+	return all_spells
+
+# Legacy SPELLS constant for compatibility - will be populated dynamically
+var SPELLS = {}
+
+# =============================================================================
+# CHARACTERS - Two classes: Ranger (ranged) and Warrior (melee)
+# =============================================================================
 const CHARACTERS = {
-	"DUELIST": {
-		"id": "DUELIST",
-		"name": "Duelist",
-		"spells": ["STRIKE", "DASH", "GUARD", "FORCE"]
+	"RANGER": {
+		"id": "RANGER",
+		"name": "Ranger",
+		"class_type": "RANGED",  # Character archetype
+		"description": "Master of ranged combat. Deals damage from a distance.",
+		"spells": []  # Will be populated with RANGER_SPELLS keys
 	},
-	"RANGED": {
-		"id": "RANGED",
-		"name": "Ranged",
-		"spells": ["SHOT", "SNIPE", "BACKSTEP"]
+	"WARRIOR": {
+		"id": "WARRIOR",
+		"name": "Warrior", 
+		"class_type": "MELEE",  # Character archetype
+		"description": "Master of close combat. High damage up close.",
+		"spells": []  # Will be populated with WARRIOR_SPELLS keys
 	}
 }
+
+# Helper to get spells for a character
+static func get_character_spells(character_id: String) -> Array:
+	if character_id == "RANGER":
+		return RANGER_SPELLS.keys()
+	elif character_id == "WARRIOR":
+		return WARRIOR_SPELLS.keys()
+	return []
+
+# Helper to get a spell by ID (searches all spell dictionaries)
+static func get_spell(spell_id: String) -> Dictionary:
+	if RANGER_SPELLS.has(spell_id):
+		return RANGER_SPELLS[spell_id]
+	if WARRIOR_SPELLS.has(spell_id):
+		return WARRIOR_SPELLS[spell_id]
+	return {}
+
+# Constants for game balance
+const MAX_HP = 100
+const MAX_AP = 50
+const MAX_MP = 3  # Movement points
 
 static func create_initial_state() -> Dictionary:
 	return {
 		"turn": {
 			"currentPlayerId": "P1",
 			"number": 1,
-			"actionTaken": false,
-			"movesRemaining": 3
+			"apRemaining": MAX_AP,  # Action Points - resets each turn
+			"movesRemaining": MAX_MP
 		},
 		"units": {
 			"P1": {
-				"id": "P1", "x": 2, "y": 5, "hp": 10,
+				"id": "P1", "x": 2, "y": 5, "hp": MAX_HP,
 				"status": { "guard": null },
-				"cooldowns": { "STRIKE": 0, "DASH": 0, "GUARD": 0, "FORCE": 0, "SHOT":0, "SNIPE":0, "BACKSTEP":0 }
+				"cooldowns": {}  # Empty - will be populated when spells are added
 			},
 			"P2": {
-				"id": "P2", "x": 3, "y": 1, "hp": 10,
+				"id": "P2", "x": 3, "y": 1, "hp": MAX_HP,
 				"status": { "guard": null },
-				"cooldowns": { "STRIKE": 0, "DASH": 0, "GUARD": 0, "FORCE": 0, "SHOT":0, "SNIPE":0, "BACKSTEP":0 }
+				"cooldowns": {}  # Empty - will be populated when spells are added
 			}
 		},
 		"winner": null,
