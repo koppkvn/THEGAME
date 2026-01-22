@@ -291,9 +291,10 @@ static func push_unit_from_with_collision(state: Dictionary, target: Dictionary,
 				target.hp = 0
 				push_log(state, "Ring Out!")
 				check_win(state)
+				return
 			else:
 				blocked_tiles = distance - i
-			return
+				break
 		
 		# Check wall collision
 		if Data.is_obstacle(nx, ny):
@@ -356,7 +357,9 @@ static func push_unit_from_center(state: Dictionary, target: Dictionary, center_
 				target.hp = 0
 				push_log(state, "Ring Out!")
 				check_win(state)
-			return
+				return
+			else:
+				break
 		
 		if Data.is_obstacle(nx, ny):
 			break

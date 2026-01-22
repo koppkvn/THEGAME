@@ -373,10 +373,12 @@ func handle_server_message(text: String):
 			update_all()
 			
 		"ERROR":
-			status_label.text = "Error: %s" % msg.message
+			if is_instance_valid(status_label):
+				status_label.text = "Error: %s" % msg.message
 			
 		"PLAYER_DISCONNECTED":
-			status_label.text = "Opponent disconnected!"
+			if is_instance_valid(status_label):
+				status_label.text = "Opponent disconnected!"
 			# Could return to lobby here
 
 func _input(event):

@@ -384,8 +384,10 @@ function pushUnitFromCenter(state, target, centerX, centerY, distance) {
         target.hp = 0;
         pushLog(state, "Ring Out!");
         checkWin(state);
+        return;
+      } else {
+        break;
       }
-      return;
     }
 
     if (isObstacle(nx, ny)) break;
