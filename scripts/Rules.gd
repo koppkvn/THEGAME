@@ -1,10 +1,10 @@
 class_name Rules
 # =============================================================================
-# RULES ENGINE - Handles spell resolution, status effects, and delayed effects
+# RULES ENGINE - Anti-Gravity Character Spells
 # =============================================================================
-# Status Effects: burn, bleed, slow, root, revealed
-# Delayed Effects: pending_effects queue processed at turn end
-# AoE Patterns: cross, 3x3, line, cone
+# Spells: Knockback Arrow, Piercing Arrow, Exponential Arrow, Immobilizing Arrow,
+#         Displacement Arrow, Thief Arrow
+# New mechanics: casts_per_turn, min_range, exponential stages, random effects
 # =============================================================================
 
 static func in_bounds(x: int, y: int) -> bool:
@@ -19,9 +19,6 @@ static func get_unit_at(state: Dictionary, x: int, y: int):
 
 static func dist_manhattan(u1, u2) -> int:
 	return abs(u1.x - u2.x) + abs(u1.y - u2.y)
-
-static func has_line_of_sight(state: Dictionary, from_u, to_u) -> bool:
-	return has_line_of_sight_to_cell(from_u.x, from_u.y, to_u.x, to_u.y)
 
 static func has_line_of_sight_to_cell(from_x: int, from_y: int, to_x: int, to_y: int) -> bool:
 	var x0 = from_x
@@ -57,7 +54,6 @@ static func push_log(state: Dictionary, msg: String) -> void:
 		state.log.pop_front()
 
 static func get_path_distance(state: Dictionary, from_x: int, from_y: int, to_x: int, to_y: int) -> int:
-	# BFS to find shortest path distance, returns -1 if unreachable
 	if from_x == to_x and from_y == to_y: return 0
 	
 	var visited = {}
@@ -66,9 +62,7 @@ static func get_path_distance(state: Dictionary, from_x: int, from_y: int, to_x:
 	visited[start_key] = true
 	queue.append({"x": from_x, "y": from_y, "dist": 0})
 	
-	# 4 cardinal directions only (no diagonals)
 	var dirs = [Vector2i(0, 1), Vector2i(0, -1), Vector2i(1, 0), Vector2i(-1, 0)]
-	
 
 	while queue.size() > 0:
 		var current = queue.pop_front()
@@ -77,8 +71,6 @@ static func get_path_distance(state: Dictionary, from_x: int, from_y: int, to_x:
 			var nx = current.x + d.x
 			var ny = current.y + d.y
 			var key = "%d,%d" % [nx, ny]
-			
-			# All cardinal moves cost 1
 			var move_cost = 1
 			var new_dist = current.dist + move_cost
 			
@@ -95,18 +87,16 @@ static func get_path_distance(state: Dictionary, from_x: int, from_y: int, to_x:
 	
 	return -1
 
-# Get the actual path from one tile to another, returning array of positions to walk through
 static func find_movement_path(state: Dictionary, from_x: int, from_y: int, to_x: int, to_y: int) -> Array:
 	if from_x == to_x and from_y == to_y: return []
 	
 	var visited = {}
-	var parent = {}  # Track where we came from for path reconstruction
+	var parent = {}
 	var queue = []
 	var start_key = "%d,%d" % [from_x, from_y]
 	visited[start_key] = 0
 	queue.append({"x": from_x, "y": from_y, "dist": 0})
 	
-	# 4 cardinal directions only (no diagonals)
 	var dirs = [Vector2i(0, 1), Vector2i(0, -1), Vector2i(1, 0), Vector2i(-1, 0)]
 	
 	var found = false
@@ -118,8 +108,6 @@ static func find_movement_path(state: Dictionary, from_x: int, from_y: int, to_x
 			var nx = current.x + d.x
 			var ny = current.y + d.y
 			var key = "%d,%d" % [nx, ny]
-			
-			# All cardinal moves cost 1
 			var new_dist = current.dist + 1
 			
 			if visited.has(key) and visited[key] <= new_dist: continue
@@ -139,7 +127,6 @@ static func find_movement_path(state: Dictionary, from_x: int, from_y: int, to_x
 	if not found:
 		return []
 	
-	# Reconstruct path from destination to start
 	var path = []
 	var current_key = "%d,%d" % [to_x, to_y]
 	while parent.has(current_key):
@@ -150,66 +137,25 @@ static func find_movement_path(state: Dictionary, from_x: int, from_y: int, to_x
 	return path
 
 # =============================================================================
+# RANDOM DAMAGE HELPER
+# =============================================================================
+
+static func roll_damage(min_dmg: int, max_dmg: int) -> int:
+	return randi() % (max_dmg - min_dmg + 1) + min_dmg
+
+# =============================================================================
 # AOE PATTERN HELPERS
 # =============================================================================
 
-# Get tiles in cross pattern (center + 4 cardinal adjacent)
-static func get_cross_tiles(cx: int, cy: int) -> Array:
-	return [
-		{"x": cx, "y": cy},
-		{"x": cx + 1, "y": cy}, {"x": cx - 1, "y": cy},
-		{"x": cx, "y": cy + 1}, {"x": cx, "y": cy - 1}
-	]
-
-# Get tiles in 3x3 area centered on target
-static func get_3x3_tiles(cx: int, cy: int) -> Array:
-	var tiles = []
-	for dx in range(-1, 2):
-		for dy in range(-1, 2):
-			tiles.append({"x": cx + dx, "y": cy + dy})
+static func get_cross_tiles(cx: int, cy: int, radius: int = 1) -> Array:
+	var tiles = [{"x": cx, "y": cy}]
+	for i in range(1, radius + 1):
+		tiles.append({"x": cx + i, "y": cy})
+		tiles.append({"x": cx - i, "y": cy})
+		tiles.append({"x": cx, "y": cy + i})
+		tiles.append({"x": cx, "y": cy - i})
 	return tiles
 
-# Get tiles in 5x5 area centered on target
-static func get_5x5_tiles(cx: int, cy: int) -> Array:
-	var tiles = []
-	for dx in range(-2, 3):
-		for dy in range(-2, 3):
-			tiles.append({"x": cx + dx, "y": cy + dy})
-	return tiles
-
-# Get tiles in a line from caster in a cardinal direction until wall/boundary
-static func get_line_tiles(sx: int, sy: int, dir: Vector2i, max_range: int, ignore_walls: bool = false) -> Array:
-	var tiles = []
-	for i in range(1, max_range + 1):
-		var nx = sx + dir.x * i
-		var ny = sy + dir.y * i
-		if not in_bounds(nx, ny):
-			break
-		if not ignore_walls and Data.is_obstacle(nx, ny):
-			break
-		tiles.append({"x": nx, "y": ny})
-	return tiles
-
-# Get tiles in a forward-facing cone (widens by 1 each row)
-static func get_cone_tiles(sx: int, sy: int, dir: Vector2i, range_val: int) -> Array:
-	var tiles = []
-	for i in range(1, range_val + 1):
-		# Width at this distance (1 at distance 1, 3 at distance 2, 5 at distance 3, etc.)
-		var width = i
-		var cx = sx + dir.x * i
-		var cy = sy + dir.y * i
-		
-		# Perpendicular direction
-		var perp = Vector2i(-dir.y, dir.x) if dir.x != 0 or dir.y != 0 else Vector2i(1, 0)
-		
-		for w in range(-width + 1, width):
-			var tx = cx + perp.x * w
-			var ty = cy + perp.y * w
-			if in_bounds(tx, ty):
-				tiles.append({"x": tx, "y": ty})
-	return tiles
-
-# Get direction vector from caster to target (normalized to cardinal)
 static func get_cardinal_direction(from_x: int, from_y: int, to_x: int, to_y: int) -> Vector2i:
 	var dx = to_x - from_x
 	var dy = to_y - from_y
@@ -218,30 +164,19 @@ static func get_cardinal_direction(from_x: int, from_y: int, to_x: int, to_y: in
 	else:
 		return Vector2i(0, sign(dy)) if dy != 0 else Vector2i(sign(dx), 0)
 
-# Get preview tiles for spell AOE based on spell type and target position
 static func get_aoe_preview_tiles(state: Dictionary, caster_id: String, spell_id: String, target_x: int, target_y: int) -> Array:
 	var spell = Data.get_spell(spell_id)
 	if spell.is_empty(): return []
 	
-	var caster = state.units[caster_id]
-	var aoe_type = spell.get("aoe", "")
+	var _caster = state.units[caster_id]
 	var tiles = []
 	
-	match aoe_type:
-		"CROSS":
-			tiles = get_cross_tiles(target_x, target_y)
-		"3X3":
-			tiles = get_3x3_tiles(target_x, target_y)
-		"5X5_RANDOM":
-			tiles = get_5x5_tiles(target_x, target_y)
-		"LINE":
-			var dir = get_cardinal_direction(caster.x, caster.y, target_x, target_y)
-			tiles = get_line_tiles(caster.x, caster.y, dir, spell.get("range", 8), false)
-		"CONE":
-			var dir = get_cardinal_direction(caster.x, caster.y, target_x, target_y)
-			tiles = get_cone_tiles(caster.x, caster.y, dir, spell.get("range", 4))
+	match spell_id:
+		"DISPLACEMENT_ARROW":
+			# Show cross pattern (1-3 tiles in each direction)
+			tiles = get_cross_tiles(target_x, target_y, spell.get("cross_range", 3))
 		_:
-			# Single target spell - just show target tile
+			# Single target
 			tiles = [{"x": target_x, "y": target_y}]
 	
 	# Filter to only include in-bounds tiles
@@ -256,83 +191,40 @@ static func get_aoe_preview_tiles(state: Dictionary, caster_id: String, spell_id
 # STATUS EFFECT SYSTEM
 # =============================================================================
 
-# Apply a status effect to a unit
 static func apply_status(unit: Dictionary, effect: String, data: Dictionary) -> void:
 	if not unit.status.has(effect) or unit.status[effect] == null:
 		unit.status[effect] = data
 	else:
-		# For damage_reduction, keep highest value
-		if effect == "damage_reduction":
-			if data.percent > unit.status[effect].percent:
-				unit.status[effect] = data
-			else:
-				unit.status[effect].turns = max(unit.status[effect].turns, data.turns)
-		else:
-			# Stack by refreshing duration to max
-			unit.status[effect].turns = max(unit.status[effect].turns, data.turns)
+		unit.status[effect].turns = max(unit.status[effect].turns, data.turns)
 
-# Check if unit has a specific status
 static func has_status(unit: Dictionary, effect: String) -> bool:
 	return unit.status.has(effect) and unit.status[effect] != null
 
-# Process burn damage at turn start (ignores armor/damage reduction)
-static func process_burn(state: Dictionary, pid: String) -> void:
-	var unit = state.units[pid]
-	if has_status(unit, "burn"):
-		var burn_dmg = unit.status.burn.damage
-		# Burn ignores armor - apply directly
-		unit.hp = max(0, unit.hp - burn_dmg)
-		push_log(state, "%s burns for %d damage (ignores armor)" % [pid, burn_dmg])
-		unit.status.burn.turns -= 1
-		if unit.status.burn.turns <= 0:
-			unit.status.burn = null
-		check_win(state)
-
-# Process bleed damage at end of turn (10 HP per spec)
-static func process_bleed(state: Dictionary, pid: String) -> void:
-	var unit = state.units[pid]
-	if has_status(unit, "bleed"):
-		var bleed_dmg = 10  # Fixed 10 HP per spec
-		unit.hp = max(0, unit.hp - bleed_dmg)
-		push_log(state, "%s bleeds for %d damage" % [pid, bleed_dmg])
-		unit.status.bleed.turns -= 1
-		if unit.status.bleed.turns <= 0:
-			unit.status.bleed = null
-			push_log(state, "%s: bleed wore off" % pid)
-		check_win(state)
-
-# Check if unit is rooted (cannot move but can attack/use abilities)
 static func is_rooted(unit: Dictionary) -> bool:
 	return has_status(unit, "root")
 
-# Check if unit is stunned (cannot move, attack, or use abilities)
 static func is_stunned(unit: Dictionary) -> bool:
 	return has_status(unit, "stun")
 
-# Check if unit is knocked down (cannot move but can attack/use abilities)
 static func is_knocked_down(unit: Dictionary) -> bool:
 	return has_status(unit, "knocked_down")
 
-# Check if unit has movement loss (loses movement action)
 static func has_movement_loss(unit: Dictionary) -> bool:
 	return has_status(unit, "movement_loss")
 
-# Get damage reduction percentage (0.0 to 1.0)
-static func get_damage_reduction(unit: Dictionary) -> float:
-	if has_status(unit, "damage_reduction"):
-		return unit.status.damage_reduction.percent
+static func get_damage_boost(unit: Dictionary) -> float:
+	if has_status(unit, "damage_boost"):
+		return unit.status.damage_boost.percent
 	return 0.0
 
-# Check if unit is slowed (reduced movement)
-static func get_slow_amount(unit: Dictionary) -> float:
-	if has_status(unit, "slow"):
-		return unit.status.slow.amount
-	return 0.0
+static func get_mp_reduction(unit: Dictionary) -> int:
+	if has_status(unit, "mp_reduction"):
+		return unit.status.mp_reduction.amount
+	return 0
 
-# Decrement all status effect durations at turn start
 static func tick_status_effects(state: Dictionary, pid: String) -> void:
 	var unit = state.units[pid]
-	var effects_to_check = ["slow", "root", "revealed", "stun", "knocked_down", "damage_reduction", "movement_loss"]
+	var effects_to_check = ["slow", "root", "revealed", "stun", "knocked_down", "damage_reduction", "movement_loss", "mp_reduction", "damage_boost"]
 	for effect in effects_to_check:
 		if has_status(unit, effect):
 			unit.status[effect].turns -= 1
@@ -341,86 +233,22 @@ static func tick_status_effects(state: Dictionary, pid: String) -> void:
 				push_log(state, "%s: %s wore off" % [pid, effect])
 
 # =============================================================================
-# DELAYED EFFECT SYSTEM (for Hawk's Indirect Strike, Marked Detonation)
+# DAMAGE SYSTEM
 # =============================================================================
 
-# Add a pending delayed effect
-static func add_pending_effect(state: Dictionary, effect: Dictionary) -> void:
-	if not state.has("pending_effects"):
-		state["pending_effects"] = []
-	state.pending_effects.append(effect)
-	push_log(state, "Delayed effect queued for turn %d" % effect.trigger_turn)
-
-# Process all pending effects that should trigger this turn
-static func process_pending_effects(state: Dictionary) -> void:
-	if not state.has("pending_effects"):
-		return
-	
-	var current_turn = state.turn.number
-	var to_remove = []
-	
-	for i in range(state.pending_effects.size()):
-		var effect = state.pending_effects[i]
-		if effect.trigger_turn <= current_turn:
-			resolve_delayed_effect(state, effect)
-			to_remove.append(i)
-	
-	# Remove processed effects (reverse order to preserve indices)
-	for i in range(to_remove.size() - 1, -1, -1):
-		state.pending_effects.remove_at(to_remove[i])
-
-# Resolve a delayed effect
-static func resolve_delayed_effect(state: Dictionary, effect: Dictionary) -> void:
-	push_log(state, "Delayed effect triggers!")
-	
-	match effect.spell_id:
-		"HAWKS_INDIRECT_STRIKE":
-			# 35 damage to center, 20 to adjacent
-			var tiles = get_cross_tiles(effect.target_x, effect.target_y)
-			for tile in tiles:
-				var target_unit = get_unit_at(state, tile.x, tile.y)
-				if target_unit:
-					var dmg = 35 if (tile.x == effect.target_x and tile.y == effect.target_y) else 20
-					target_unit.hp = max(0, target_unit.hp - dmg)
-					push_log(state, "%s hit for %d (Hawk's Strike)" % [target_unit.id, dmg])
-			check_win(state)
-			
-		"MARKED_DETONATION":
-			# 45 damage to center and adjacent, +20 if burn/bleed
-			var tiles = get_cross_tiles(effect.target_x, effect.target_y)
-			for tile in tiles:
-				var target_unit = get_unit_at(state, tile.x, tile.y)
-				if target_unit:
-					var dmg = 45
-					# Bonus damage if target has burn or bleed
-					if has_status(target_unit, "burn") or has_status(target_unit, "bleed"):
-						dmg += 20
-						push_log(state, "Bonus damage from status!")
-					target_unit.hp = max(0, target_unit.hp - dmg)
-					push_log(state, "%s hit for %d (Detonation)" % [target_unit.id, dmg])
-			check_win(state)
-
-# =============================================================================
-# ENHANCED DAMAGE AND PUSH SYSTEM
-# =============================================================================
-
-# Deal damage to a unit at specific coordinates (for AoE)
-# Note: For burn damage (which ignores armor), call unit.hp directly instead
-static func deal_damage_at(state: Dictionary, x: int, y: int, amount: int, source: String = "", ignore_reduction: bool = false) -> bool:
+static func deal_damage_at(state: Dictionary, x: int, y: int, amount: int, source: String = "", caster = null) -> bool:
 	var target = get_unit_at(state, x, y)
 	if target:
 		var dmg = amount
-		# Guard mitigation
-		if target.status.guard != null:
-			dmg = max(0, dmg - target.status.guard.value)
-			target.status.guard = null
-			push_log(state, "Guard absorbed damage")
-		# Apply damage reduction (percentage-based)
-		if not ignore_reduction and has_status(target, "damage_reduction"):
-			var reduction = get_damage_reduction(target)
-			var reduced_dmg = int(dmg * (1.0 - reduction))
-			push_log(state, "Damage reduced by %d%%" % int(reduction * 100))
-			dmg = reduced_dmg
+		# Apply caster's damage boost
+		if caster and has_status(caster, "damage_boost"):
+			var boost = get_damage_boost(caster)
+			dmg = int(float(dmg) * (1.0 + boost))
+			push_log(state, "Damage boosted by %d%%" % int(boost * 100))
+		# Apply target's damage boost (they take more damage)
+		if has_status(target, "damage_boost"):
+			var boost = get_damage_boost(target)
+			dmg = int(float(dmg) * (1.0 + boost))
 		target.hp = max(0, target.hp - dmg)
 		if source != "":
 			push_log(state, "%s hit for %d (%s)" % [target.id, dmg, source])
@@ -430,14 +258,16 @@ static func deal_damage_at(state: Dictionary, x: int, y: int, amount: int, sourc
 		return true
 	return false
 
-# Push a unit multiple tiles away from a point, with optional collision damage
-static func push_unit_from(state: Dictionary, target: Dictionary, from_x: int, from_y: int, distance: int, collision_damage: int = 0) -> void:
+# =============================================================================
+# PUSH SYSTEM - Enhanced for Knockback Arrow
+# =============================================================================
+
+static func push_unit_from_with_collision(state: Dictionary, target: Dictionary, from_x: int, from_y: int, distance: int, collision_damage_per_tile: int) -> void:
 	var dx = target.x - from_x
 	var dy = target.y - from_y
 	var push_dir_x = 0
 	var push_dir_y = 0
 	
-	# Determine push direction
 	if abs(dx) > abs(dy):
 		push_dir_x = sign(dx)
 	elif abs(dy) > abs(dx):
@@ -448,8 +278,9 @@ static func push_unit_from(state: Dictionary, target: Dictionary, from_x: int, f
 		else:
 			push_dir_x = sign(dx) if dx != 0 else 1
 	
-	# Push tile by tile
 	var pushed = 0
+	var blocked_tiles = 0
+	
 	for i in range(distance):
 		var nx = target.x + push_dir_x
 		var ny = target.y + push_dir_y
@@ -460,29 +291,20 @@ static func push_unit_from(state: Dictionary, target: Dictionary, from_x: int, f
 				target.hp = 0
 				push_log(state, "Ring Out!")
 				check_win(state)
-			elif collision_damage > 0:
-				target.hp = max(0, target.hp - collision_damage)
-				push_log(state, "Wall collision! +%d damage" % collision_damage)
-				check_win(state)
+			else:
+				blocked_tiles = distance - i
 			return
 		
 		# Check wall collision
 		if Data.is_obstacle(nx, ny):
-			if collision_damage > 0:
-				target.hp = max(0, target.hp - collision_damage)
-				push_log(state, "Wall collision! +%d damage" % collision_damage)
-				check_win(state)
-			return
+			blocked_tiles = distance - i
+			break
 		
 		# Check unit collision
 		var blocking_unit = get_unit_at(state, nx, ny)
 		if blocking_unit:
-			if collision_damage > 0:
-				target.hp = max(0, target.hp - collision_damage)
-				blocking_unit.hp = max(0, blocking_unit.hp - collision_damage)
-				push_log(state, "Unit collision! Both take %d damage" % collision_damage)
-				check_win(state)
-			return
+			blocked_tiles = distance - i
+			break
 		
 		# Move unit
 		target.x = nx
@@ -491,20 +313,76 @@ static func push_unit_from(state: Dictionary, target: Dictionary, from_x: int, f
 	
 	if pushed > 0:
 		push_log(state, "%s pushed %d tiles" % [target.id, pushed])
+	
+	# Apply collision damage for blocked tiles
+	if blocked_tiles > 0 and collision_damage_per_tile > 0:
+		var collision_dmg = blocked_tiles * collision_damage_per_tile
+		target.hp = max(0, target.hp - collision_dmg)
+		push_log(state, "Collision! +%d damage (%d tiles blocked)" % [collision_dmg, blocked_tiles])
+		check_win(state)
+
+# Push for Displacement Arrow (from center of cross)
+static func push_unit_from_center(state: Dictionary, target: Dictionary, center_x: int, center_y: int, distance: int) -> void:
+	var dx = target.x - center_x
+	var dy = target.y - center_y
+	var push_dir_x = 0
+	var push_dir_y = 0
+	
+	# Determine push direction based on which arm of the cross the unit is on
+	if dx != 0 and dy == 0:
+		push_dir_x = sign(dx)
+	elif dy != 0 and dx == 0:
+		push_dir_y = sign(dy)
+	elif dx == 0 and dy == 0:
+		# Unit is at center - push in a random direction
+		var dirs = [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]
+		var dir = dirs[randi() % 4]
+		push_dir_x = dir.x
+		push_dir_y = dir.y
+	else:
+		# Unit is not on a cardinal arm - determine dominant direction
+		if abs(dx) >= abs(dy):
+			push_dir_x = sign(dx)
+		else:
+			push_dir_y = sign(dy)
+	
+	var pushed = 0
+	for i in range(distance):
+		var nx = target.x + push_dir_x
+		var ny = target.y + push_dir_y
+		
+		if not in_bounds(nx, ny):
+			if Data.BOARD.ring_out:
+				target.hp = 0
+				push_log(state, "Ring Out!")
+				check_win(state)
+			return
+		
+		if Data.is_obstacle(nx, ny):
+			break
+		
+		var blocking_unit = get_unit_at(state, nx, ny)
+		if blocking_unit:
+			break
+		
+		target.x = nx
+		target.y = ny
+		pushed += 1
+	
+	if pushed > 0:
+		push_log(state, "%s displaced %d tiles" % [target.id, pushed])
 
 # =============================================================================
 # MAIN ACTION HANDLER
 # =============================================================================
 
 static func apply_action(state: Dictionary, action: Dictionary) -> Dictionary:
-	# Deep copy state (simple dictionary duplication)
 	var next = state.duplicate(true)
 	var pid = action.playerId
 	
 	if next.winner != null: return state
 	if next.turn.currentPlayerId != pid and action.type != "END_TURN": return state
 
-	
 	var me = next.units[pid]
 	var other_id = "P2" if pid == "P1" else "P1"
 	var enemy = next.units[other_id]
@@ -523,12 +401,6 @@ static func apply_action(state: Dictionary, action: Dictionary) -> Dictionary:
 		if is_rooted(me):
 			push_log(next, "%s is rooted and cannot move!" % pid)
 			return state
-		if is_knocked_down(me):
-			push_log(next, "%s is knocked down and cannot move!" % pid)
-			return state
-		if has_movement_loss(me):
-			push_log(next, "%s has lost movement this turn!" % pid)
-			return state
 		
 		# Calculate path distance via BFS
 		var path_dist = get_path_distance(next, me.x, me.y, tx, ty)
@@ -539,12 +411,11 @@ static func apply_action(state: Dictionary, action: Dictionary) -> Dictionary:
 		next.turn.movesRemaining -= path_dist
 		push_log(next, "%s moved to (%d,%d)" % [pid, tx, ty])
 		
-		# Movement does NOT end turn - player can still cast spell
 		return next
 
 
 	elif action.type == "CAST":
-		# Check if stunned - cannot use abilities
+		# Check if stunned
 		if is_stunned(me):
 			push_log(next, "%s is stunned and cannot act!" % pid)
 			return state
@@ -557,307 +428,197 @@ static func apply_action(state: Dictionary, action: Dictionary) -> Dictionary:
 		# Check cooldown
 		if me.cooldowns.get(spell_id, 0) > 0: return state
 		
+		# Check casts per turn
+		var casts_this_turn = me.casts_this_turn.get(spell_id, 0)
+		var max_casts = spell.get("casts_per_turn", 1)
+		if casts_this_turn >= max_casts: return state
+		
 		# Check AP cost
 		var ap_cost = spell.get("ap_cost", 0)
 		if next.turn.apRemaining < ap_cost: return state
 		
-		# Deduct AP and set cooldown
+		# Check range (both min and max)
+		var d = abs(me.x - target.x) + abs(me.y - target.y)
+		var min_range = spell.get("min_range", 1)
+		var max_range = spell.get("range", 1)
+		if d < min_range or d > max_range or d == 0: return state
+		
+		# Check LOS if required
+		var requires_los = spell.get("requires_los", true)
+		if requires_los and not has_line_of_sight_to_cell(me.x, me.y, target.x, target.y): return state
+		
+		# Deduct AP and increment casts
 		next.turn.apRemaining -= ap_cost
-		me.cooldowns[spell_id] = spell.get("cooldown", 0)
+		me.casts_this_turn[spell_id] = casts_this_turn + 1
+		
+		# Set cooldown only after max casts reached
+		if me.casts_this_turn[spell_id] >= max_casts:
+			me.cooldowns[spell_id] = spell.get("cooldown", 0)
+		
 		push_log(next, "%s casts %s (-%d AP, %d remaining)" % [pid, spell.label, ap_cost, next.turn.apRemaining])
 		
 		# =================================================================
-		# RANGER SPELL RESOLUTION
+		# SPELL RESOLUTION
 		# =================================================================
 		
 		match spell_id:
 			# ---------------------------------------------------------
-			# 1) CROSSFIRE VOLLEY - Cross AoE with push
+			# 1) KNOCKBACK ARROW - Push with collision damage
 			# ---------------------------------------------------------
-			"CROSSFIRE_VOLLEY":
-				var d = dist_manhattan(me, target)
-				if d > spell.range or d == 0: return state
-				if not has_line_of_sight_to_cell(me.x, me.y, target.x, target.y): return state
-				
-				var tiles = get_cross_tiles(target.x, target.y)
-				var pushed_units = []
-				for tile in tiles:
-					if not in_bounds(tile.x, tile.y): continue
-					var dmg = 25 if (tile.x == target.x and tile.y == target.y) else 15
-					var hit_unit = get_unit_at(next, tile.x, tile.y)
-					if hit_unit:
-						deal_damage_at(next, tile.x, tile.y, dmg, "Crossfire Volley")
-						# Push adjacent hits 1 tile away if not center
-						if not (tile.x == target.x and tile.y == target.y) and hit_unit.hp > 0:
-							pushed_units.append(hit_unit)
-				# Push after dealing all damage
-				for unit in pushed_units:
-					push_unit_from(next, unit, target.x, target.y, 1, 0)
-				return next
-			
-			# ---------------------------------------------------------
-			# 2) PIERCING WINDSHOT - Line pierce with slow
-			# ---------------------------------------------------------
-			"PIERCING_WINDSHOT":
-				# Target must be in a straight cardinal line
-				var dir = get_cardinal_direction(me.x, me.y, target.x, target.y)
-				if dir == Vector2i(0, 0): return state
-				if not has_line_of_sight_to_cell(me.x, me.y, target.x, target.y): return state
-				
-				# Get all tiles in line until wall/boundary (up to 8 range)
-				var line_tiles = get_line_tiles(me.x, me.y, dir, 8, false)
-				for tile in line_tiles:
-					var hit_unit = get_unit_at(next, tile.x, tile.y)
-					if hit_unit:
-						deal_damage_at(next, tile.x, tile.y, 22, "Piercing Windshot")
-						if hit_unit.hp > 0:
-							apply_status(hit_unit, "slow", {"turns": 1, "amount": 0.30})
-							push_log(next, "%s slowed!" % hit_unit.id)
-				return next
-			
-			# ---------------------------------------------------------
-			# 3) BLAZING SCATTER - 3x3 AoE with burn
-			# ---------------------------------------------------------
-			"BLAZING_SCATTER":
-				var d = dist_manhattan(me, target)
-				if d > spell.range or d == 0: return state
-				if not has_line_of_sight_to_cell(me.x, me.y, target.x, target.y): return state
-				
-				var tiles = get_3x3_tiles(target.x, target.y)
-				for tile in tiles:
-					if not in_bounds(tile.x, tile.y): continue
-					var hit_unit = get_unit_at(next, tile.x, tile.y)
-					if hit_unit:
-						deal_damage_at(next, tile.x, tile.y, 28, "Blazing Scatter")
-						if hit_unit.hp > 0:
-							apply_status(hit_unit, "burn", {"turns": 2, "damage": 8})
-							push_log(next, "%s is burning!" % hit_unit.id)
-				return next
-			
-			# ---------------------------------------------------------
-			# 4) HAWK'S INDIRECT STRIKE - Delayed, no LOS
-			# ---------------------------------------------------------
-			"HAWKS_INDIRECT_STRIKE":
-				var d = dist_manhattan(me, target)
-				if d > spell.range or d == 0: return state
-				# No LOS check - this spell ignores walls
-				
-				# Queue delayed effect for next turn
-				add_pending_effect(next, {
-					"spell_id": "HAWKS_INDIRECT_STRIKE",
-					"trigger_turn": next.turn.number + 1,
-					"target_x": target.x,
-					"target_y": target.y,
-					"caster_id": pid
-				})
-				push_log(next, "Hawk's Strike incoming at (%d,%d)!" % [target.x, target.y])
-				return next
-			
-			# ---------------------------------------------------------
-			# 5) REPELLING SHOT - Single target, push 2, collision damage
-			# ---------------------------------------------------------
-			"REPELLING_SHOT":
-				var d = dist_manhattan(me, target)
-				if d > spell.range or d == 0: return state
-				if not has_line_of_sight_to_cell(me.x, me.y, target.x, target.y): return state
-				
+			"KNOCKBACK_ARROW":
 				var hit_unit = get_unit_at(next, target.x, target.y)
 				if hit_unit:
-					deal_damage_at(next, target.x, target.y, 40, "Repelling Shot")
+					var dmg = roll_damage(spell.damage_min, spell.damage_max)
+					deal_damage_at(next, target.x, target.y, dmg, "Knockback Arrow", me)
 					if hit_unit.hp > 0:
-						push_unit_from(next, hit_unit, me.x, me.y, 2, 20)  # +20 collision dmg
+						push_unit_from_with_collision(next, hit_unit, me.x, me.y, spell.push, spell.collision_damage_per_tile)
 				else:
 					push_log(next, "No target at location")
 				return next
 			
 			# ---------------------------------------------------------
-			# 6) SHADOW RAIN - Random arrows in 5x5, no LOS
+			# 2) PIERCING ARROW - Simple damage, ignores LOS
 			# ---------------------------------------------------------
-			"SHADOW_RAIN":
-				var d = dist_manhattan(me, target)
-				if d > spell.range or d == 0: return state
-				# No LOS check
+			"PIERCING_ARROW":
+				var hit_unit = get_unit_at(next, target.x, target.y)
+				if hit_unit:
+					var dmg = roll_damage(spell.damage_min, spell.damage_max)
+					deal_damage_at(next, target.x, target.y, dmg, "Piercing Arrow", me)
+				else:
+					push_log(next, "No target at location")
+				return next
+			
+			# ---------------------------------------------------------
+			# 3) EXPONENTIAL ARROW - Stage-based damage
+			# ---------------------------------------------------------
+			"EXPONENTIAL_ARROW":
+				var hit_unit = get_unit_at(next, target.x, target.y)
+				if hit_unit:
+					var stage = me.exponential_stage
+					var stage_dmg = spell.stage_damage[stage]
+					var dmg = roll_damage(stage_dmg.min, stage_dmg.max)
+					deal_damage_at(next, target.x, target.y, dmg, "Exponential Arrow (Stage %d)" % stage, me)
+					
+					# Advance stage (max 3)
+					if me.exponential_stage < 3:
+						me.exponential_stage += 1
+						push_log(next, "Exponential Arrow advanced to Stage %d!" % me.exponential_stage)
+				else:
+					push_log(next, "No target at location")
+				return next
+			
+			# ---------------------------------------------------------
+			# 4) IMMOBILIZING ARROW - MP removal
+			# ---------------------------------------------------------
+			"IMMOBILIZING_ARROW":
+				var hit_unit = get_unit_at(next, target.x, target.y)
+				if hit_unit:
+					var dmg = roll_damage(spell.damage_min, spell.damage_max)
+					deal_damage_at(next, target.x, target.y, dmg, "Immobilizing Arrow", me)
+					if hit_unit.hp > 0:
+						var mp_remove = randi() % (spell.mp_removal_max - spell.mp_removal_min + 1) + spell.mp_removal_min
+						if mp_remove > 0:
+							apply_status(hit_unit, "mp_reduction", {"turns": 1, "amount": mp_remove})
+							push_log(next, "%s loses %d MP for 1 turn!" % [hit_unit.id, mp_remove])
+				else:
+					push_log(next, "No target at location")
+				return next
+			
+			# ---------------------------------------------------------
+			# 5) DISPLACEMENT ARROW - Cross push from empty tile
+			# ---------------------------------------------------------
+			"DISPLACEMENT_ARROW":
+				# Must target empty tile
+				if get_unit_at(next, target.x, target.y):
+					push_log(next, "Must target empty tile!")
+					# Refund AP and cast
+					next.turn.apRemaining += ap_cost
+					me.casts_this_turn[spell_id] = casts_this_turn
+					return state
 				
-				var tiles = get_5x5_tiles(target.x, target.y)
-				var valid_tiles = []
-				for tile in tiles:
+				# Get all tiles in cross
+				var cross_tiles = get_cross_tiles(target.x, target.y, spell.cross_range)
+				var units_to_push = []
+				
+				for tile in cross_tiles:
 					if in_bounds(tile.x, tile.y):
-						valid_tiles.append(tile)
+						var unit_on_tile = get_unit_at(next, tile.x, tile.y)
+						if unit_on_tile:
+							units_to_push.append(unit_on_tile)
 				
-				# Fire ~10 random arrows
-				var num_arrows = 10
-				for i in range(num_arrows):
-					if valid_tiles.size() == 0: break
-					var rand_idx = randi() % valid_tiles.size()
-					var tile = valid_tiles[rand_idx]
-					var hit_unit = get_unit_at(next, tile.x, tile.y)
-					if hit_unit:
-						hit_unit.hp = max(0, hit_unit.hp - 15)
-						push_log(next, "Arrow hits %s for 15!" % hit_unit.id)
-				check_win(next)
+				# Push all units away from center
+				for unit in units_to_push:
+					push_unit_from_center(next, unit, target.x, target.y, spell.push_distance)
+				
+				if units_to_push.size() == 0:
+					push_log(next, "No units in displacement area")
+				
 				return next
 			
 			# ---------------------------------------------------------
-			# 7) PINNING CROSS - Cross AoE with root
+			# 6) THIEF ARROW - Random effects
 			# ---------------------------------------------------------
-			"PINNING_CROSS":
-				var d = dist_manhattan(me, target)
-				if d > spell.range or d == 0: return state
-				if not has_line_of_sight_to_cell(me.x, me.y, target.x, target.y): return state
-				
-				var tiles = get_cross_tiles(target.x, target.y)
-				for tile in tiles:
-					if not in_bounds(tile.x, tile.y): continue
-					var hit_unit = get_unit_at(next, tile.x, tile.y)
-					if hit_unit:
-						deal_damage_at(next, tile.x, tile.y, 20, "Pinning Cross")
-						if hit_unit.hp > 0:
-							apply_status(hit_unit, "root", {"turns": 1})
-							push_log(next, "%s is rooted!" % hit_unit.id)
-				return next
-			
-			# ---------------------------------------------------------
-			# 8) PHANTOM SHOT - Pierce walls, reveal
-			# ---------------------------------------------------------
-			"PHANTOM_SHOT":
-				var d = dist_manhattan(me, target)
-				if d > spell.range or d == 0: return state
-				# No LOS check - projectile passes through walls
-				
+			"THIEF_ARROW":
 				var hit_unit = get_unit_at(next, target.x, target.y)
-				if hit_unit:
-					deal_damage_at(next, target.x, target.y, 30, "Phantom Shot")
-					if hit_unit.hp > 0:
-						apply_status(hit_unit, "revealed", {"turns": 2})
-						push_log(next, "%s revealed!" % hit_unit.id)
-				else:
+				if not hit_unit:
 					push_log(next, "No target at location")
+					return next
+				
+				# Step 1: Deal damage
+				var dmg = roll_damage(spell.damage_min, spell.damage_max)
+				deal_damage_at(next, target.x, target.y, dmg, "Thief Arrow", me)
+				
+				if hit_unit.hp <= 0:
+					return next
+				
+				# Step 2: Roll all random effects independently
+				var steal_ap = randf() < (1.0 / 3.0)
+				var give_ap = randf() < (1.0 / 3.0)
+				var boost_caster = randf() < (1.0 / 5.0)
+				var boost_target = randf() < (1.0 / 5.0)
+				var swap_hp = randf() < (1.0 / 20.0)
+				
+				# Step 3: Apply AP changes
+				if steal_ap:
+					# Steal 1 AP from target's next turn (we reduce their MP as proxy)
+					push_log(next, "Stole 1 AP from %s!" % hit_unit.id)
+					# Note: In this system AP is per-turn, so we give caster +1 AP
+					next.turn.apRemaining += 1
+				
+				if give_ap:
+					push_log(next, "Gave 1 AP to %s!" % hit_unit.id)
+					# Target gets bonus AP on their turn - we can't directly give them AP
+					# So we reduce our own AP by 1 as the cost
+					next.turn.apRemaining = max(0, next.turn.apRemaining - 1)
+				
+				# Step 4: Apply damage modifiers
+				if boost_caster:
+					apply_status(me, "damage_boost", {"turns": 1, "percent": 0.20})
+					push_log(next, "%s gains +20%% damage next turn!" % pid)
+				
+				if boost_target:
+					apply_status(hit_unit, "damage_boost", {"turns": 1, "percent": 0.20})
+					push_log(next, "%s gains +20%% damage next turn!" % hit_unit.id)
+				
+				# Step 5: HP swap
+				if swap_hp:
+					var my_hp = me.hp
+					var their_hp = hit_unit.hp
+					me.hp = their_hp
+					hit_unit.hp = my_hp
+					push_log(next, "HP SWAPPED! %s: %d -> %d, %s: %d -> %d" % [pid, my_hp, their_hp, hit_unit.id, their_hp, my_hp])
+					check_win(next)
+				
 				return next
-			
-			# ---------------------------------------------------------
-			# 9) CONE OF THORNS - Cone AoE with bleed
-			# ---------------------------------------------------------
-			"CONE_OF_THORNS":
-				# Get direction from click position
-				var dir = get_cardinal_direction(me.x, me.y, target.x, target.y)
-				if dir == Vector2i(0, 0): return state
-				if not has_line_of_sight_to_cell(me.x, me.y, target.x, target.y): return state
-				
-				var cone_tiles = get_cone_tiles(me.x, me.y, dir, 4)
-				for tile in cone_tiles:
-					if not in_bounds(tile.x, tile.y): continue
-					var hit_unit = get_unit_at(next, tile.x, tile.y)
-					if hit_unit:
-						deal_damage_at(next, tile.x, tile.y, 24, "Cone of Thorns")
-						if hit_unit.hp > 0:
-							apply_status(hit_unit, "bleed", {"turns": 2})
-							push_log(next, "%s is bleeding!" % hit_unit.id)
-				return next
-			
-			# ---------------------------------------------------------
-			# 10) MARKED DETONATION - Delayed mark, bonus on status
-			# ---------------------------------------------------------
-			"MARKED_DETONATION":
-				var d = dist_manhattan(me, target)
-				if d > spell.range or d == 0: return state
-				if not has_line_of_sight_to_cell(me.x, me.y, target.x, target.y): return state
-				
-				# Queue delayed effect for next turn
-				add_pending_effect(next, {
-					"spell_id": "MARKED_DETONATION",
-					"trigger_turn": next.turn.number + 1,
-					"target_x": target.x,
-					"target_y": target.y,
-					"caster_id": pid
-				})
-				push_log(next, "Mark placed at (%d,%d) - detonates next turn!" % [target.x, target.y])
-				return next
-		
-		# =================================================================
-		# GENERIC SPELL TYPE FALLBACK (for non-Ranger spells)
-		# =================================================================
-		if spell.type == "ATTACK":
-			var d = dist_manhattan(me, target)
-			if d > spell.get("range", 1) or d == 0: return state
-			
-			# Check if enemy is at target
-			if target.x == enemy.x and target.y == enemy.y:
-				var damage_type = "MELEE" if spell.get("range", 1) <= 1 else "RANGED"
-				resolve_damage(next, me, enemy, spell.get("damage", 0), damage_type)
-				
-				# Handle push if spell has it
-				if spell.has("push") and enemy.hp > 0:
-					resolve_push(next, me, enemy)
-			else:
-				push_log(next, "No target at location")
-				
-		elif spell.type == "MOVE":
-			# Movement spells (like dash)
-			me.x = target.x
-			me.y = target.y
-			
-		elif spell.type == "BUFF":
-			# Self-buff spells
-			if spell.has("guard_value"):
-				me.status.guard = { "value": spell.guard_value }
 		
 		return next
-			
+		
 	elif action.type == "END_TURN":
 		push_log(next, "%s ends turn" % pid)
 		handle_turn_end(next)
 		return next
 		
 	return state
-
-static func resolve_damage(state, attacker, defender, amount, type):
-	var dmg = amount
-	var countered = false
-	
-	if defender.status.guard != null:
-		dmg = max(0, dmg - defender.status.guard.value)
-		defender.status.guard = null
-		push_log(state, "Guard reduced damage")
-		if type == "MELEE": countered = true
-	
-	defender.hp = max(0, defender.hp - dmg)
-	push_log(state, "%s took %d damage" % [defender.id, dmg])
-	check_win(state)
-	
-	if countered and defender.hp > 0 and attacker.hp > 0:
-		attacker.hp = max(0, attacker.hp - 1)
-		push_log(state, "Counter-attack hit %s" % attacker.id)
-		check_win(state)
-
-static func resolve_push(state, pusher, target):
-	var dx = target.x - pusher.x
-	var dy = target.y - pusher.y
-	var push_x = 0
-	var push_y = 0
-	
-	if abs(dx) > abs(dy): push_x = sign(dx)
-	elif abs(dy) > abs(dx): push_y = sign(dy)
-	else:
-		if dy != 0: push_y = sign(dy)
-		else: push_x = sign(dx)
-		
-	var tx = target.x + push_x
-	var ty = target.y + push_y
-	
-	if not in_bounds(tx, ty):
-		if Data.BOARD.ring_out:
-			target.hp = 0
-			push_log(state, "Ring Out!")
-			check_win(state)
-		return
-		
-	if get_unit_at(state, tx, ty):
-		push_log(state, "Push blocked")
-		return
-		
-	target.x = tx
-	target.y = ty
-	push_log(state, "Pushed to (%d,%d)" % [tx, ty])
 
 static func check_win(state):
 	var p1_dead = state.units.P1.hp <= 0
@@ -872,37 +633,39 @@ static func handle_turn_end(state):
 	
 	var current = state.turn.currentPlayerId
 	var next_player = "P2" if current == "P1" else "P1"
+	var current_unit = state.units[current]
 	
-	# Process bleed damage at END of current player's turn
-	process_bleed(state, current)
-	if state.winner != null: return
+	# Check Exponential Arrow reset - if it was available but not cast, reset to Stage 1
+	var exp_spell = Data.get_spell("EXPONENTIAL_ARROW")
+	var exp_cooldown = current_unit.cooldowns.get("EXPONENTIAL_ARROW", 0)
+	var exp_casts = current_unit.casts_this_turn.get("EXPONENTIAL_ARROW", 0)
 	
-	# Tick down status effect durations at END of current player's turn
-	# This way effects like root/stun last through the affected player's full turn
+	# Spell was available if cooldown was 0 and had AP for it
+	if exp_cooldown == 0 and exp_casts == 0:
+		# Player didn't cast it when available - reset stage
+		if current_unit.exponential_stage > 1:
+			push_log(state, "%s: Exponential Arrow reset to Stage 1 (not cast when available)" % current)
+			current_unit.exponential_stage = 1
+	
+	# Tick status effects at END of current player's turn
 	tick_status_effects(state, current)
 	
-	# Process pending delayed effects at end of turn
-	process_pending_effects(state)
-	if state.winner != null: return
-	
+	# Switch turn
 	state.turn.currentPlayerId = next_player
 	if next_player == "P1": state.turn.number += 1
-	state.turn.apRemaining = Data.MAX_AP  # Reset AP each turn
-	state.turn.movesRemaining = Data.MAX_MP  # Reset movement points
+	state.turn.apRemaining = Data.MAX_AP
+	state.turn.movesRemaining = Data.MAX_MP
 	
-	# Start of turn upkeep
 	var p_unit = state.units[next_player]
-	p_unit.status.guard = null
 	
-	# Apply slow: reduce movement by percentage (rounded down)
-	if has_status(p_unit, "slow"):
-		var reduction = get_slow_amount(p_unit)
-		state.turn.movesRemaining = int(float(Data.MAX_MP) * (1.0 - reduction))
-		push_log(state, "%s is slowed! (%d movement)" % [next_player, state.turn.movesRemaining])
+	# Reset casts_this_turn for new turn
+	p_unit.casts_this_turn = {}
 	
-	# Process burn damage at start of new player's turn (ignores armor)
-	process_burn(state, next_player)
-	if state.winner != null: return
+	# Apply MP reduction from Immobilizing Arrow
+	if has_status(p_unit, "mp_reduction"):
+		var reduction = get_mp_reduction(p_unit)
+		state.turn.movesRemaining = max(0, state.turn.movesRemaining - reduction)
+		push_log(state, "%s has %d less MP this turn!" % [next_player, reduction])
 	
 	# Decrement cooldowns
 	for key in p_unit.cooldowns:
@@ -914,23 +677,19 @@ static func get_legal_moves(state: Dictionary, pid: String) -> Array:
 	
 	var me = state.units[pid]
 	
-	# Check movement-blocking statuses
-	if is_stunned(me) or is_rooted(me) or is_knocked_down(me) or has_movement_loss(me):
+	if is_stunned(me) or is_rooted(me):
 		return []
 	
 	var max_dist = state.turn.movesRemaining
 	var moves = []
 	
-	# BFS to find all reachable tiles within movement range
 	var visited = {}
 	var queue = []
 	var start_key = "%d,%d" % [me.x, me.y]
 	visited[start_key] = 0
 	queue.append({"x": me.x, "y": me.y, "dist": 0})
 	
-	# 4 cardinal directions only (no diagonals)
 	var dirs = [Vector2i(0, 1), Vector2i(0, -1), Vector2i(1, 0), Vector2i(-1, 0)]
-	
 
 	while queue.size() > 0:
 		var current = queue.pop_front()
@@ -939,7 +698,6 @@ static func get_legal_moves(state: Dictionary, pid: String) -> Array:
 			var nx = current.x + d.x
 			var ny = current.y + d.y
 			
-			# All cardinal moves cost 1
 			var move_cost = 1
 			var new_dist = current.dist + move_cost
 			var key = "%d,%d" % [nx, ny]
@@ -971,67 +729,34 @@ static func get_legal_targets(state: Dictionary, pid: String, spell_id: String) 
 	if state.turn.apRemaining < ap_cost: return []
 	
 	var me = state.units[pid]
-	var enemy_id = "P2" if pid == "P1" else "P1"
-	var enemy = state.units[enemy_id]
 	
 	# Check cooldown
 	if me.cooldowns.get(spell_id, 0) > 0: return []
 	
-	var targets = []
-	var spell_range = spell.get("range", 1)
-	var requires_los = spell.get("requires_los", true)
-	var cardinal_only = spell.get("cardinal_only", false)
+	# Check casts per turn
+	var casts_this_turn = me.casts_this_turn.get(spell_id, 0)
+	var max_casts = spell.get("casts_per_turn", 1)
+	if casts_this_turn >= max_casts: return []
 	
-	# Generic target calculation based on spell type
-	if spell.type == "ATTACK":
-		# Special handling for cardinal-only spells (Piercing Windshot)
-		if cardinal_only:
-			var dirs = [Vector2i(0, 1), Vector2i(0, -1), Vector2i(1, 0), Vector2i(-1, 0)]
-			for dir in dirs:
-				for i in range(1, spell_range + 1):
-					var nx = me.x + dir.x * i
-					var ny = me.y + dir.y * i
-					if in_bounds(nx, ny) and not Data.is_obstacle(nx, ny):
-						if not requires_los or has_line_of_sight_to_cell(me.x, me.y, nx, ny):
-							targets.append({"x": nx, "y": ny})
-					else:
-						break  # Stop at wall
-		# Special handling for cone spells (show cardinal directions only)
-		elif spell.get("aoe") == "CONE":
-			var dirs = [Vector2i(0, 1), Vector2i(0, -1), Vector2i(1, 0), Vector2i(-1, 0)]
-			for dir in dirs:
-				# Show first tile in each direction as target
-				var nx = me.x + dir.x
-				var ny = me.y + dir.y
-				if in_bounds(nx, ny):
-					if not requires_los or has_line_of_sight_to_cell(me.x, me.y, nx, ny):
-						targets.append({"x": nx, "y": ny})
-		else:
-			# Standard AoE/single target - show all valid tiles in range
-			for r in range(Data.BOARD.rows):
-				for c in range(Data.BOARD.cols):
-					var d = abs(me.x - c) + abs(me.y - r)
-					if d > 0 and d <= spell_range:
-						# Skip obstacles for targeting
-						if not Data.is_obstacle(c, r):
-							# Check LOS if required
-							if not requires_los or has_line_of_sight_to_cell(me.x, me.y, c, r):
-								targets.append({"x": c, "y": r})
-			
-	elif spell.type == "MOVE":
-		# Movement spells - show valid movement destinations
-		var dirs = [Vector2i(0, 1), Vector2i(0, -1), Vector2i(1, 0), Vector2i(-1, 0)]
-		for d in dirs:
-			for i in range(1, spell_range + 1):
-				var nx = me.x + d.x * i
-				var ny = me.y + d.y * i
-				if in_bounds(nx, ny) and not get_unit_at(state, nx, ny) and not Data.is_obstacle(nx, ny):
-					targets.append({"x": nx, "y": ny})
-				else:
-					break  # Can't move through obstacles/units
-					
-	elif spell.type == "BUFF":
-		# Self-targeting buffs
-		targets.append({"x": me.x, "y": me.y})
-
+	var targets = []
+	var min_range = spell.get("min_range", 1)
+	var max_range = spell.get("range", 1)
+	var requires_los = spell.get("requires_los", true)
+	var requires_empty = spell.get("requires_empty_tile", false)
+	
+	for r in range(Data.BOARD.rows):
+		for c in range(Data.BOARD.cols):
+			var d = abs(me.x - c) + abs(me.y - r)
+			if d >= min_range and d <= max_range:
+				# Skip obstacles for targeting
+				if Data.is_obstacle(c, r): continue
+				
+				# Check LOS if required
+				if requires_los and not has_line_of_sight_to_cell(me.x, me.y, c, r): continue
+				
+				# Check empty tile requirement
+				if requires_empty and get_unit_at(state, c, r): continue
+				
+				targets.append({"x": c, "y": r})
+	
 	return targets

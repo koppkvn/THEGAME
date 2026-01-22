@@ -1,7 +1,7 @@
 // rules.js - Server-side game rules (synced with Rules.gd)
-// Updated: Full Ranger spell system with AP, status effects, and delayed effects
+// Anti-Gravity Character Spell System
 
-const BOARD = { cols: 10, rows: 10, ringOut: true };
+const BOARD = { cols: 9, rows: 9, ringOut: true };
 
 const OBSTACLES = [
   { x: 4, y: 4 },
@@ -11,134 +11,104 @@ const OBSTACLES = [
   { x: 2, y: 7 },
 ];
 
-// Game constants
-const MAX_HP = 100;
-const MAX_AP = 50;
-const MAX_MP = 5;
+// Game constants - Anti-Gravity spec
+const MAX_HP = 10000;
+const MAX_AP = 10;
+const MAX_MP = 4;
 
-// Ranger Spells
-const RANGER_SPELLS = {
-  CROSSFIRE_VOLLEY: {
-    id: "CROSSFIRE_VOLLEY",
-    label: "Crossfire Volley",
-    type: "ATTACK",
-    range: 6,
-    damage: 25,
-    ap_cost: 18,
-    cooldown: 3,
-    requires_los: true,
-    aoe: "CROSS",
-  },
-  PIERCING_WINDSHOT: {
-    id: "PIERCING_WINDSHOT",
-    label: "Piercing Windshot",
-    type: "ATTACK",
-    range: 8,
-    damage: 22,
-    ap_cost: 16,
-    cooldown: 2,
-    requires_los: true,
-    aoe: "LINE",
-    cardinal_only: true,
-  },
-  BLAZING_SCATTER: {
-    id: "BLAZING_SCATTER",
-    label: "Blazing Scatter",
+// Anti-Gravity Spells
+const SPELLS = {
+  KNOCKBACK_ARROW: {
+    id: "KNOCKBACK_ARROW",
+    label: "Knockback Arrow",
     type: "ATTACK",
     range: 5,
-    damage: 28,
-    ap_cost: 24,
-    cooldown: 4,
+    min_range: 1,
+    damage_min: 200,
+    damage_max: 400,
+    ap_cost: 3,
+    casts_per_turn: 1,
+    cooldown: 0,
     requires_los: true,
-    aoe: "3X3",
-    damage_type: "FIRE",
+    push: 3,
+    collision_damage_per_tile: 100,
   },
-  HAWKS_INDIRECT_STRIKE: {
-    id: "HAWKS_INDIRECT_STRIKE",
-    label: "Hawk's Indirect Strike",
-    type: "ATTACK",
-    range: 7,
-    damage: 35,
-    ap_cost: 30,
-    cooldown: 5,
-    requires_los: false,
-    aoe: "CROSS",
-    delayed: true,
-  },
-  REPELLING_SHOT: {
-    id: "REPELLING_SHOT",
-    label: "Repelling Shot",
-    type: "ATTACK",
-    range: 6,
-    damage: 40,
-    ap_cost: 20,
-    cooldown: 3,
-    requires_los: true,
-    push: 2,
-    collision_damage: 20,
-  },
-  SHADOW_RAIN: {
-    id: "SHADOW_RAIN",
-    label: "Shadow Rain",
-    type: "ATTACK",
-    range: 7,
-    damage: 15,
-    ap_cost: 32,
-    cooldown: 5,
-    requires_los: false,
-    aoe: "5X5_RANDOM",
-    arrow_count: 10,
-  },
-  PINNING_CROSS: {
-    id: "PINNING_CROSS",
-    label: "Pinning Cross",
-    type: "ATTACK",
-    range: 5,
-    damage: 20,
-    ap_cost: 18,
-    cooldown: 3,
-    requires_los: true,
-    aoe: "CROSS",
-  },
-  PHANTOM_SHOT: {
-    id: "PHANTOM_SHOT",
-    label: "Phantom Shot",
+  PIERCING_ARROW: {
+    id: "PIERCING_ARROW",
+    label: "Piercing Arrow",
     type: "ATTACK",
     range: 8,
-    damage: 30,
-    ap_cost: 14,
-    cooldown: 2,
+    min_range: 1,
+    damage_min: 100,
+    damage_max: 300,
+    ap_cost: 2,
+    casts_per_turn: 2,
+    cooldown: 0,
     requires_los: false,
-    pierces_walls: true,
   },
-  CONE_OF_THORNS: {
-    id: "CONE_OF_THORNS",
-    label: "Cone of Thorns",
+  EXPONENTIAL_ARROW: {
+    id: "EXPONENTIAL_ARROW",
+    label: "Exponential Arrow",
     type: "ATTACK",
-    range: 4,
-    damage: 24,
-    ap_cost: 18,
-    cooldown: 3,
+    range: 8,
+    min_range: 3,
+    ap_cost: 5,
+    casts_per_turn: 1,
+    cooldown: 2,
     requires_los: true,
-    aoe: "CONE",
+    stage_damage: {
+      1: { min: 200, max: 600 },
+      2: { min: 600, max: 1200 },
+      3: { min: 3000, max: 4000 },
+    },
   },
-  MARKED_DETONATION: {
-    id: "MARKED_DETONATION",
-    label: "Marked Detonation",
+  IMMOBILIZING_ARROW: {
+    id: "IMMOBILIZING_ARROW",
+    label: "Immobilizing Arrow",
     type: "ATTACK",
-    range: 6,
-    damage: 45,
-    ap_cost: 34,
-    cooldown: 6,
+    range: 8,
+    min_range: 1,
+    damage_min: 1,
+    damage_max: 200,
+    ap_cost: 2,
+    casts_per_turn: 2,
+    cooldown: 0,
     requires_los: true,
-    aoe: "CROSS",
-    delayed: true,
-    status_bonus: 20,
+    mp_removal_min: 0,
+    mp_removal_max: 2,
+  },
+  DISPLACEMENT_ARROW: {
+    id: "DISPLACEMENT_ARROW",
+    label: "Displacement Arrow",
+    type: "DISPLACEMENT",
+    range: 8,
+    min_range: 1,
+    ap_cost: 4,
+    casts_per_turn: 1,
+    cooldown: 1,
+    requires_los: true,
+    requires_empty_tile: true,
+    cross_range: 3,
+    push_distance: 2,
+  },
+  THIEF_ARROW: {
+    id: "THIEF_ARROW",
+    label: "Thief Arrow",
+    type: "ATTACK",
+    range: 8,
+    min_range: 1,
+    damage_min: 0,
+    damage_max: 100,
+    ap_cost: 1,
+    casts_per_turn: 2,
+    cooldown: 0,
+    requires_los: true,
+    random_effects: true,
   },
 };
 
 function getSpell(spellId) {
-  return RANGER_SPELLS[spellId] || null;
+  return SPELLS[spellId] || null;
 }
 
 function isObstacle(x, y) {
@@ -162,10 +132,8 @@ function distManhattan(u1, u2) {
 }
 
 function hasLineOfSightToCell(fromX, fromY, toX, toY) {
-  let x0 = fromX,
-    y0 = fromY;
-  const x1 = toX,
-    y1 = toY;
+  let x0 = fromX, y0 = fromY;
+  const x1 = toX, y1 = toY;
   const dx = Math.abs(x1 - x0);
   const dy = -Math.abs(y1 - y0);
   const sx = x0 < x1 ? 1 : -1;
@@ -176,14 +144,8 @@ function hasLineOfSightToCell(fromX, fromY, toX, toY) {
     if (isObstacle(x0, y0)) return false;
     if (x0 === x1 && y0 === y1) break;
     const e2 = 2 * err;
-    if (e2 >= dy) {
-      err += dy;
-      x0 += sx;
-    }
-    if (e2 <= dx) {
-      err += dx;
-      y0 += sy;
-    }
+    if (e2 >= dy) { err += dy; x0 += sx; }
+    if (e2 <= dx) { err += dx; y0 += sy; }
   }
   return true;
 }
@@ -195,16 +157,7 @@ function getPathDistance(state, fromX, fromY, toX, toY) {
   const queue = [{ x: fromX, y: fromY, dist: 0 }];
   visited.set(`${fromX},${fromY}`, true);
 
-  const dirs = [
-    [0, 1],
-    [0, -1],
-    [1, 0],
-    [-1, 0],
-    [1, 1],
-    [1, -1],
-    [-1, 1],
-    [-1, -1],
-  ];
+  const dirs = [[0, 1], [0, -1], [1, 0], [-1, 0]];
 
   while (queue.length > 0) {
     const current = queue.shift();
@@ -212,8 +165,7 @@ function getPathDistance(state, fromX, fromY, toX, toY) {
       const nx = current.x + dx;
       const ny = current.y + dy;
       const key = `${nx},${ny}`;
-      const moveCost = dx !== 0 && dy !== 0 ? 2 : 1;
-      const newDist = current.dist + moveCost;
+      const newDist = current.dist + 1;
 
       if (visited.has(key)) continue;
       if (!inBounds(nx, ny)) continue;
@@ -243,78 +195,26 @@ function checkWin(state) {
 }
 
 // =============================================================================
-// AOE PATTERN HELPERS
+// RANDOM HELPERS
 // =============================================================================
 
-function getCrossTiles(cx, cy) {
-  return [
-    { x: cx, y: cy },
-    { x: cx + 1, y: cy },
-    { x: cx - 1, y: cy },
-    { x: cx, y: cy + 1 },
-    { x: cx, y: cy - 1 },
-  ];
+function rollDamage(min, max) {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
-function get3x3Tiles(cx, cy) {
-  const tiles = [];
-  for (let dx = -1; dx <= 1; dx++) {
-    for (let dy = -1; dy <= 1; dy++) {
-      tiles.push({ x: cx + dx, y: cy + dy });
-    }
+// =============================================================================
+// AOE HELPERS
+// =============================================================================
+
+function getCrossTiles(cx, cy, radius = 1) {
+  const tiles = [{ x: cx, y: cy }];
+  for (let i = 1; i <= radius; i++) {
+    tiles.push({ x: cx + i, y: cy });
+    tiles.push({ x: cx - i, y: cy });
+    tiles.push({ x: cx, y: cy + i });
+    tiles.push({ x: cx, y: cy - i });
   }
   return tiles;
-}
-
-function get5x5Tiles(cx, cy) {
-  const tiles = [];
-  for (let dx = -2; dx <= 2; dx++) {
-    for (let dy = -2; dy <= 2; dy++) {
-      tiles.push({ x: cx + dx, y: cy + dy });
-    }
-  }
-  return tiles;
-}
-
-function getLineTiles(sx, sy, dirX, dirY, maxRange) {
-  const tiles = [];
-  for (let i = 1; i <= maxRange; i++) {
-    const nx = sx + dirX * i;
-    const ny = sy + dirY * i;
-    if (!inBounds(nx, ny)) break;
-    if (isObstacle(nx, ny)) break;
-    tiles.push({ x: nx, y: ny });
-  }
-  return tiles;
-}
-
-function getConeTiles(sx, sy, dirX, dirY, rangeVal) {
-  const tiles = [];
-  for (let i = 1; i <= rangeVal; i++) {
-    const width = i;
-    const cx = sx + dirX * i;
-    const cy = sy + dirY * i;
-    const perpX = -dirY;
-    const perpY = dirX;
-    for (let w = -width + 1; w < width; w++) {
-      const tx = cx + perpX * w;
-      const ty = cy + perpY * w;
-      if (inBounds(tx, ty)) {
-        tiles.push({ x: tx, y: ty });
-      }
-    }
-  }
-  return tiles;
-}
-
-function getCardinalDirection(fromX, fromY, toX, toY) {
-  const dx = toX - fromX;
-  const dy = toY - fromY;
-  if (Math.abs(dx) >= Math.abs(dy)) {
-    return dx !== 0 ? { x: Math.sign(dx), y: 0 } : { x: 0, y: Math.sign(dy) };
-  } else {
-    return dy !== 0 ? { x: 0, y: Math.sign(dy) } : { x: Math.sign(dx), y: 0 };
-  }
 }
 
 // =============================================================================
@@ -333,69 +233,22 @@ function applyStatus(unit, effect, data) {
   }
 }
 
-function isRooted(unit) {
-  return hasStatus(unit, "root");
-}
+function isRooted(unit) { return hasStatus(unit, "root"); }
+function isStunned(unit) { return hasStatus(unit, "stun"); }
 
-function isStunned(unit) {
-  return hasStatus(unit, "stun");
-}
-
-function isKnockedDown(unit) {
-  return hasStatus(unit, "knocked_down");
-}
-
-function hasMovementLoss(unit) {
-  return hasStatus(unit, "movement_loss");
-}
-
-function getSlowAmount(unit) {
-  if (hasStatus(unit, "slow")) {
-    return unit.status.slow.amount;
-  }
+function getDamageBoost(unit) {
+  if (hasStatus(unit, "damage_boost")) return unit.status.damage_boost.percent;
   return 0.0;
 }
 
-function processBleed(state, pid) {
-  const unit = state.units[pid];
-  if (hasStatus(unit, "bleed")) {
-    const bleedDmg = 10;
-    unit.hp = Math.max(0, unit.hp - bleedDmg);
-    pushLog(state, `${pid} bleeds for ${bleedDmg} damage`);
-    unit.status.bleed.turns -= 1;
-    if (unit.status.bleed.turns <= 0) {
-      unit.status.bleed = null;
-      pushLog(state, `${pid}: bleed wore off`);
-    }
-    checkWin(state);
-  }
-}
-
-function processBurn(state, pid) {
-  const unit = state.units[pid];
-  if (hasStatus(unit, "burn")) {
-    const burnDmg = unit.status.burn.damage;
-    unit.hp = Math.max(0, unit.hp - burnDmg);
-    pushLog(state, `${pid} burns for ${burnDmg} damage (ignores armor)`);
-    unit.status.burn.turns -= 1;
-    if (unit.status.burn.turns <= 0) {
-      unit.status.burn = null;
-    }
-    checkWin(state);
-  }
+function getMpReduction(unit) {
+  if (hasStatus(unit, "mp_reduction")) return unit.status.mp_reduction.amount;
+  return 0;
 }
 
 function tickStatusEffects(state, pid) {
   const unit = state.units[pid];
-  const effects = [
-    "slow",
-    "root",
-    "revealed",
-    "stun",
-    "knocked_down",
-    "damage_reduction",
-    "movement_loss",
-  ];
+  const effects = ["slow", "root", "revealed", "stun", "knocked_down", "damage_reduction", "movement_loss", "mp_reduction", "damage_boost"];
   for (const effect of effects) {
     if (hasStatus(unit, effect)) {
       unit.status[effect].turns -= 1;
@@ -408,81 +261,20 @@ function tickStatusEffects(state, pid) {
 }
 
 // =============================================================================
-// DELAYED EFFECT SYSTEM
+// DAMAGE SYSTEM
 // =============================================================================
 
-function addPendingEffect(state, effect) {
-  if (!state.pending_effects) {
-    state.pending_effects = [];
-  }
-  state.pending_effects.push(effect);
-  pushLog(state, `Delayed effect queued for turn ${effect.trigger_turn}`);
-}
-
-function processPendingEffects(state) {
-  if (!state.pending_effects) return;
-
-  const currentTurn = state.turn.number;
-  const toRemove = [];
-
-  for (let i = 0; i < state.pending_effects.length; i++) {
-    const effect = state.pending_effects[i];
-    if (effect.trigger_turn <= currentTurn) {
-      resolveDelayedEffect(state, effect);
-      toRemove.push(i);
-    }
-  }
-
-  for (let i = toRemove.length - 1; i >= 0; i--) {
-    state.pending_effects.splice(toRemove[i], 1);
-  }
-}
-
-function resolveDelayedEffect(state, effect) {
-  pushLog(state, "Delayed effect triggers!");
-
-  if (effect.spell_id === "HAWKS_INDIRECT_STRIKE") {
-    const tiles = getCrossTiles(effect.target_x, effect.target_y);
-    for (const tile of tiles) {
-      const targetUnit = getUnitAt(state, tile.x, tile.y);
-      if (targetUnit) {
-        const dmg =
-          tile.x === effect.target_x && tile.y === effect.target_y ? 35 : 20;
-        targetUnit.hp = Math.max(0, targetUnit.hp - dmg);
-        pushLog(state, `${targetUnit.id} hit for ${dmg} (Hawk's Strike)`);
-      }
-    }
-    checkWin(state);
-  } else if (effect.spell_id === "MARKED_DETONATION") {
-    const tiles = getCrossTiles(effect.target_x, effect.target_y);
-    for (const tile of tiles) {
-      const targetUnit = getUnitAt(state, tile.x, tile.y);
-      if (targetUnit) {
-        let dmg = 45;
-        if (hasStatus(targetUnit, "burn") || hasStatus(targetUnit, "bleed")) {
-          dmg += 20;
-          pushLog(state, "Bonus damage from status!");
-        }
-        targetUnit.hp = Math.max(0, targetUnit.hp - dmg);
-        pushLog(state, `${targetUnit.id} hit for ${dmg} (Detonation)`);
-      }
-    }
-    checkWin(state);
-  }
-}
-
-// =============================================================================
-// DAMAGE AND PUSH SYSTEM
-// =============================================================================
-
-function dealDamageAt(state, x, y, amount, source = "") {
+function dealDamageAt(state, x, y, amount, source = "", caster = null) {
   const target = getUnitAt(state, x, y);
   if (target) {
     let dmg = amount;
-    if (target.status.guard != null) {
-      dmg = Math.max(0, dmg - target.status.guard.value);
-      target.status.guard = null;
-      pushLog(state, "Guard absorbed damage");
+    if (caster && hasStatus(caster, "damage_boost")) {
+      const boost = getDamageBoost(caster);
+      dmg = Math.floor(dmg * (1.0 + boost));
+    }
+    if (hasStatus(target, "damage_boost")) {
+      const boost = getDamageBoost(target);
+      dmg = Math.floor(dmg * (1.0 + boost));
     }
     target.hp = Math.max(0, target.hp - dmg);
     if (source) {
@@ -496,21 +288,89 @@ function dealDamageAt(state, x, y, amount, source = "") {
   return false;
 }
 
-function pushUnitFrom(state, target, fromX, fromY, distance, collisionDamage) {
+// =============================================================================
+// PUSH SYSTEM
+// =============================================================================
+
+function pushUnitFromWithCollision(state, target, fromX, fromY, distance, collisionDamagePerTile) {
   const dx = target.x - fromX;
   const dy = target.y - fromY;
-  let pushDirX = 0;
-  let pushDirY = 0;
+  let pushDirX = 0, pushDirY = 0;
 
   if (Math.abs(dx) > Math.abs(dy)) {
     pushDirX = Math.sign(dx);
   } else if (Math.abs(dy) > Math.abs(dx)) {
     pushDirY = Math.sign(dy);
   } else {
-    if (dy !== 0) {
-      pushDirY = Math.sign(dy);
+    if (dy !== 0) pushDirY = Math.sign(dy);
+    else pushDirX = dx !== 0 ? Math.sign(dx) : 1;
+  }
+
+  let pushed = 0;
+  let blockedTiles = 0;
+
+  for (let i = 0; i < distance; i++) {
+    const nx = target.x + pushDirX;
+    const ny = target.y + pushDirY;
+
+    if (!inBounds(nx, ny)) {
+      if (BOARD.ringOut) {
+        target.hp = 0;
+        pushLog(state, "Ring Out!");
+        checkWin(state);
+      } else {
+        blockedTiles = distance - i;
+      }
+      break;
+    }
+
+    if (isObstacle(nx, ny)) {
+      blockedTiles = distance - i;
+      break;
+    }
+
+    const blockingUnit = getUnitAt(state, nx, ny);
+    if (blockingUnit) {
+      blockedTiles = distance - i;
+      break;
+    }
+
+    target.x = nx;
+    target.y = ny;
+    pushed++;
+  }
+
+  if (pushed > 0) {
+    pushLog(state, `${target.id} pushed ${pushed} tiles`);
+  }
+
+  if (blockedTiles > 0 && collisionDamagePerTile > 0) {
+    const collisionDmg = blockedTiles * collisionDamagePerTile;
+    target.hp = Math.max(0, target.hp - collisionDmg);
+    pushLog(state, `Collision! +${collisionDmg} damage (${blockedTiles} tiles blocked)`);
+    checkWin(state);
+  }
+}
+
+function pushUnitFromCenter(state, target, centerX, centerY, distance) {
+  const dx = target.x - centerX;
+  const dy = target.y - centerY;
+  let pushDirX = 0, pushDirY = 0;
+
+  if (dx !== 0 && dy === 0) {
+    pushDirX = Math.sign(dx);
+  } else if (dy !== 0 && dx === 0) {
+    pushDirY = Math.sign(dy);
+  } else if (dx === 0 && dy === 0) {
+    const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+    const dir = dirs[Math.floor(Math.random() * 4)];
+    pushDirX = dir[0];
+    pushDirY = dir[1];
+  } else {
+    if (Math.abs(dx) >= Math.abs(dy)) {
+      pushDirX = Math.sign(dx);
     } else {
-      pushDirX = dx !== 0 ? Math.sign(dx) : 1;
+      pushDirY = Math.sign(dy);
     }
   }
 
@@ -524,33 +384,14 @@ function pushUnitFrom(state, target, fromX, fromY, distance, collisionDamage) {
         target.hp = 0;
         pushLog(state, "Ring Out!");
         checkWin(state);
-      } else if (collisionDamage > 0) {
-        target.hp = Math.max(0, target.hp - collisionDamage);
-        pushLog(state, `Wall collision! +${collisionDamage} damage`);
-        checkWin(state);
       }
       return;
     }
 
-    if (isObstacle(nx, ny)) {
-      if (collisionDamage > 0) {
-        target.hp = Math.max(0, target.hp - collisionDamage);
-        pushLog(state, `Wall collision! +${collisionDamage} damage`);
-        checkWin(state);
-      }
-      return;
-    }
+    if (isObstacle(nx, ny)) break;
 
     const blockingUnit = getUnitAt(state, nx, ny);
-    if (blockingUnit) {
-      if (collisionDamage > 0) {
-        target.hp = Math.max(0, target.hp - collisionDamage);
-        blockingUnit.hp = Math.max(0, blockingUnit.hp - collisionDamage);
-        pushLog(state, `Unit collision! Both take ${collisionDamage} damage`);
-        checkWin(state);
-      }
-      return;
-    }
+    if (blockingUnit) break;
 
     target.x = nx;
     target.y = ny;
@@ -558,7 +399,7 @@ function pushUnitFrom(state, target, fromX, fromY, distance, collisionDamage) {
   }
 
   if (pushed > 0) {
-    pushLog(state, `${target.id} pushed ${pushed} tiles`);
+    pushLog(state, `${target.id} displaced ${pushed} tiles`);
   }
 }
 
@@ -571,18 +412,20 @@ function handleTurnEnd(state) {
 
   const current = state.turn.currentPlayerId;
   const nextPlayer = current === "P1" ? "P2" : "P1";
+  const currentUnit = state.units[current];
 
-  // Process bleed at end of current player's turn
-  processBleed(state, current);
-  if (state.winner) return;
+  // Check Exponential Arrow reset
+  const expCooldown = currentUnit.cooldowns.EXPONENTIAL_ARROW || 0;
+  const expCasts = currentUnit.casts_this_turn.EXPONENTIAL_ARROW || 0;
 
-  // Tick down status effect durations at END of current player's turn
-  // This way effects like root/stun last through the affected player's full turn
+  if (expCooldown === 0 && expCasts === 0) {
+    if (currentUnit.exponential_stage > 1) {
+      pushLog(state, `${current}: Exponential Arrow reset to Stage 1 (not cast when available)`);
+      currentUnit.exponential_stage = 1;
+    }
+  }
+
   tickStatusEffects(state, current);
-
-  // Process pending delayed effects
-  processPendingEffects(state);
-  if (state.winner) return;
 
   state.turn.currentPlayerId = nextPlayer;
   if (nextPlayer === "P1") state.turn.number += 1;
@@ -590,21 +433,14 @@ function handleTurnEnd(state) {
   state.turn.movesRemaining = MAX_MP;
 
   const pUnit = state.units[nextPlayer];
-  pUnit.status.guard = null;
+  pUnit.casts_this_turn = {};
 
-  // Apply slow
-  if (hasStatus(pUnit, "slow")) {
-    const reduction = getSlowAmount(pUnit);
-    state.turn.movesRemaining = Math.floor(MAX_MP * (1.0 - reduction));
-    pushLog(
-      state,
-      `${nextPlayer} is slowed! (${state.turn.movesRemaining} movement)`
-    );
+  // Apply MP reduction
+  if (hasStatus(pUnit, "mp_reduction")) {
+    const reduction = getMpReduction(pUnit);
+    state.turn.movesRemaining = Math.max(0, state.turn.movesRemaining - reduction);
+    pushLog(state, `${nextPlayer} has ${reduction} less MP this turn!`);
   }
-
-  // Process burn at start of new player's turn
-  processBurn(state, nextPlayer);
-  if (state.winner) return;
 
   // Decrement cooldowns
   for (const key in pUnit.cooldowns) {
@@ -627,19 +463,17 @@ const defaultStatus = {
   knocked_down: null,
   damage_reduction: null,
   movement_loss: null,
+  mp_reduction: null,
+  damage_boost: null,
 };
 
 const defaultCooldowns = {
-  CROSSFIRE_VOLLEY: 0,
-  PIERCING_WINDSHOT: 0,
-  BLAZING_SCATTER: 0,
-  HAWKS_INDIRECT_STRIKE: 0,
-  REPELLING_SHOT: 0,
-  SHADOW_RAIN: 0,
-  PINNING_CROSS: 0,
-  PHANTOM_SHOT: 0,
-  CONE_OF_THORNS: 0,
-  MARKED_DETONATION: 0,
+  KNOCKBACK_ARROW: 0,
+  PIERCING_ARROW: 0,
+  EXPONENTIAL_ARROW: 0,
+  IMMOBILIZING_ARROW: 0,
+  DISPLACEMENT_ARROW: 0,
+  THIEF_ARROW: 0,
 };
 
 export function createInitialState() {
@@ -658,6 +492,9 @@ export function createInitialState() {
         hp: MAX_HP,
         status: { ...defaultStatus },
         cooldowns: { ...defaultCooldowns },
+        casts_this_turn: {},
+        exponential_stage: 1,
+        exponential_available_last_turn: false,
       },
       P2: {
         id: "P2",
@@ -666,6 +503,9 @@ export function createInitialState() {
         hp: MAX_HP,
         status: { ...defaultStatus },
         cooldowns: { ...defaultCooldowns },
+        casts_this_turn: {},
+        exponential_stage: 1,
+        exponential_available_last_turn: false,
       },
     },
     pending_effects: [],
@@ -683,8 +523,7 @@ export function applyAction(state, action) {
   const pid = action.playerId;
 
   if (next.winner) return state;
-  if (next.turn.currentPlayerId !== pid && action.type !== "END_TURN")
-    return state;
+  if (next.turn.currentPlayerId !== pid && action.type !== "END_TURN") return state;
 
   const me = next.units[pid];
   const otherId = pid === "P1" ? "P2" : "P1";
@@ -697,7 +536,7 @@ export function applyAction(state, action) {
     if (getUnitAt(next, tx, ty)) return state;
     if (next.turn.movesRemaining <= 0) return state;
 
-    if (isStunned(me) || isRooted(me) || isKnockedDown(me) || hasMovementLoss(me)) {
+    if (isStunned(me) || isRooted(me)) {
       pushLog(next, `${pid} cannot move!`);
       return state;
     }
@@ -710,6 +549,7 @@ export function applyAction(state, action) {
     next.turn.movesRemaining -= pathDist;
     pushLog(next, `${pid} moved to (${tx},${ty})`);
     return next;
+
   } else if (action.type === "CAST") {
     if (isStunned(me)) {
       pushLog(next, `${pid} is stunned and cannot act!`);
@@ -721,109 +561,47 @@ export function applyAction(state, action) {
     const spell = getSpell(spellId);
     if (!spell) return state;
 
+    // Check cooldown
     if ((me.cooldowns[spellId] || 0) > 0) return state;
 
+    // Check casts per turn
+    const castsThisTurn = me.casts_this_turn[spellId] || 0;
+    const maxCasts = spell.casts_per_turn || 1;
+    if (castsThisTurn >= maxCasts) return state;
+
+    // Check AP
     const apCost = spell.ap_cost || 0;
     if (next.turn.apRemaining < apCost) return state;
 
+    // Check range
+    const d = Math.abs(me.x - target.x) + Math.abs(me.y - target.y);
+    const minRange = spell.min_range || 1;
+    const maxRange = spell.range || 1;
+    if (d < minRange || d > maxRange || d === 0) return state;
+
+    // Check LOS
+    if (spell.requires_los && !hasLineOfSightToCell(me.x, me.y, target.x, target.y)) return state;
+
+    // Deduct AP and increment casts
     next.turn.apRemaining -= apCost;
-    me.cooldowns[spellId] = spell.cooldown || 0;
-    pushLog(
-      next,
-      `${pid} casts ${spell.label} (-${apCost} AP, ${next.turn.apRemaining} remaining)`
-    );
+    me.casts_this_turn[spellId] = castsThisTurn + 1;
+
+    // Set cooldown after max casts
+    if (me.casts_this_turn[spellId] >= maxCasts) {
+      me.cooldowns[spellId] = spell.cooldown || 0;
+    }
+
+    pushLog(next, `${pid} casts ${spell.label} (-${apCost} AP, ${next.turn.apRemaining} remaining)`);
 
     // Spell resolution
     switch (spellId) {
-      case "CROSSFIRE_VOLLEY": {
-        const d = distManhattan(me, target);
-        if (d > spell.range || d === 0) return state;
-        if (!hasLineOfSightToCell(me.x, me.y, target.x, target.y)) return state;
-
-        const tiles = getCrossTiles(target.x, target.y);
-        const pushedUnits = [];
-        for (const tile of tiles) {
-          if (!inBounds(tile.x, tile.y)) continue;
-          const dmg =
-            tile.x === target.x && tile.y === target.y ? 25 : 15;
-          const hitUnit = getUnitAt(next, tile.x, tile.y);
-          if (hitUnit) {
-            dealDamageAt(next, tile.x, tile.y, dmg, "Crossfire Volley");
-            if (!(tile.x === target.x && tile.y === target.y) && hitUnit.hp > 0) {
-              pushedUnits.push(hitUnit);
-            }
-          }
-        }
-        for (const unit of pushedUnits) {
-          pushUnitFrom(next, unit, target.x, target.y, 1, 0);
-        }
-        return next;
-      }
-
-      case "PIERCING_WINDSHOT": {
-        const dir = getCardinalDirection(me.x, me.y, target.x, target.y);
-        if (dir.x === 0 && dir.y === 0) return state;
-        if (!hasLineOfSightToCell(me.x, me.y, target.x, target.y)) return state;
-
-        const lineTiles = getLineTiles(me.x, me.y, dir.x, dir.y, 8);
-        for (const tile of lineTiles) {
-          const hitUnit = getUnitAt(next, tile.x, tile.y);
-          if (hitUnit) {
-            dealDamageAt(next, tile.x, tile.y, 22, "Piercing Windshot");
-            if (hitUnit.hp > 0) {
-              applyStatus(hitUnit, "slow", { turns: 1, amount: 0.3 });
-              pushLog(next, `${hitUnit.id} slowed!`);
-            }
-          }
-        }
-        return next;
-      }
-
-      case "BLAZING_SCATTER": {
-        const d = distManhattan(me, target);
-        if (d > spell.range || d === 0) return state;
-        if (!hasLineOfSightToCell(me.x, me.y, target.x, target.y)) return state;
-
-        const tiles = get3x3Tiles(target.x, target.y);
-        for (const tile of tiles) {
-          if (!inBounds(tile.x, tile.y)) continue;
-          const hitUnit = getUnitAt(next, tile.x, tile.y);
-          if (hitUnit) {
-            dealDamageAt(next, tile.x, tile.y, 28, "Blazing Scatter");
-            if (hitUnit.hp > 0) {
-              applyStatus(hitUnit, "burn", { turns: 2, damage: 8 });
-              pushLog(next, `${hitUnit.id} is burning!`);
-            }
-          }
-        }
-        return next;
-      }
-
-      case "HAWKS_INDIRECT_STRIKE": {
-        const d = distManhattan(me, target);
-        if (d > spell.range || d === 0) return state;
-
-        addPendingEffect(next, {
-          spell_id: "HAWKS_INDIRECT_STRIKE",
-          trigger_turn: next.turn.number + 1,
-          target_x: target.x,
-          target_y: target.y,
-          caster_id: pid,
-        });
-        pushLog(next, `Hawk's Strike incoming at (${target.x},${target.y})!`);
-        return next;
-      }
-
-      case "REPELLING_SHOT": {
-        const d = distManhattan(me, target);
-        if (d > spell.range || d === 0) return state;
-        if (!hasLineOfSightToCell(me.x, me.y, target.x, target.y)) return state;
-
+      case "KNOCKBACK_ARROW": {
         const hitUnit = getUnitAt(next, target.x, target.y);
         if (hitUnit) {
-          dealDamageAt(next, target.x, target.y, 40, "Repelling Shot");
+          const dmg = rollDamage(spell.damage_min, spell.damage_max);
+          dealDamageAt(next, target.x, target.y, dmg, "Knockback Arrow", me);
           if (hitUnit.hp > 0) {
-            pushUnitFrom(next, hitUnit, me.x, me.y, 2, 20);
+            pushUnitFromWithCollision(next, hitUnit, me.x, me.y, spell.push, spell.collision_damage_per_tile);
           }
         } else {
           pushLog(next, "No target at location");
@@ -831,57 +609,28 @@ export function applyAction(state, action) {
         return next;
       }
 
-      case "SHADOW_RAIN": {
-        const d = distManhattan(me, target);
-        if (d > spell.range || d === 0) return state;
-
-        const tiles = get5x5Tiles(target.x, target.y);
-        const validTiles = tiles.filter((t) => inBounds(t.x, t.y));
-        const numArrows = 10;
-        for (let i = 0; i < numArrows; i++) {
-          if (validTiles.length === 0) break;
-          const randIdx = Math.floor(Math.random() * validTiles.length);
-          const tile = validTiles[randIdx];
-          const hitUnit = getUnitAt(next, tile.x, tile.y);
-          if (hitUnit) {
-            hitUnit.hp = Math.max(0, hitUnit.hp - 15);
-            pushLog(next, `Arrow hits ${hitUnit.id} for 15!`);
-          }
-        }
-        checkWin(next);
-        return next;
-      }
-
-      case "PINNING_CROSS": {
-        const d = distManhattan(me, target);
-        if (d > spell.range || d === 0) return state;
-        if (!hasLineOfSightToCell(me.x, me.y, target.x, target.y)) return state;
-
-        const tiles = getCrossTiles(target.x, target.y);
-        for (const tile of tiles) {
-          if (!inBounds(tile.x, tile.y)) continue;
-          const hitUnit = getUnitAt(next, tile.x, tile.y);
-          if (hitUnit) {
-            dealDamageAt(next, tile.x, tile.y, 20, "Pinning Cross");
-            if (hitUnit.hp > 0) {
-              applyStatus(hitUnit, "root", { turns: 1 });
-              pushLog(next, `${hitUnit.id} is rooted!`);
-            }
-          }
-        }
-        return next;
-      }
-
-      case "PHANTOM_SHOT": {
-        const d = distManhattan(me, target);
-        if (d > spell.range || d === 0) return state;
-
+      case "PIERCING_ARROW": {
         const hitUnit = getUnitAt(next, target.x, target.y);
         if (hitUnit) {
-          dealDamageAt(next, target.x, target.y, 30, "Phantom Shot");
-          if (hitUnit.hp > 0) {
-            applyStatus(hitUnit, "revealed", { turns: 2 });
-            pushLog(next, `${hitUnit.id} revealed!`);
+          const dmg = rollDamage(spell.damage_min, spell.damage_max);
+          dealDamageAt(next, target.x, target.y, dmg, "Piercing Arrow", me);
+        } else {
+          pushLog(next, "No target at location");
+        }
+        return next;
+      }
+
+      case "EXPONENTIAL_ARROW": {
+        const hitUnit = getUnitAt(next, target.x, target.y);
+        if (hitUnit) {
+          const stage = me.exponential_stage;
+          const stageDmg = spell.stage_damage[stage];
+          const dmg = rollDamage(stageDmg.min, stageDmg.max);
+          dealDamageAt(next, target.x, target.y, dmg, `Exponential Arrow (Stage ${stage})`, me);
+
+          if (me.exponential_stage < 3) {
+            me.exponential_stage += 1;
+            pushLog(next, `Exponential Arrow advanced to Stage ${me.exponential_stage}!`);
           }
         } else {
           pushLog(next, "No target at location");
@@ -889,47 +638,112 @@ export function applyAction(state, action) {
         return next;
       }
 
-      case "CONE_OF_THORNS": {
-        const dir = getCardinalDirection(me.x, me.y, target.x, target.y);
-        if (dir.x === 0 && dir.y === 0) return state;
-        if (!hasLineOfSightToCell(me.x, me.y, target.x, target.y)) return state;
-
-        const coneTiles = getConeTiles(me.x, me.y, dir.x, dir.y, 4);
-        for (const tile of coneTiles) {
-          if (!inBounds(tile.x, tile.y)) continue;
-          const hitUnit = getUnitAt(next, tile.x, tile.y);
-          if (hitUnit) {
-            dealDamageAt(next, tile.x, tile.y, 24, "Cone of Thorns");
-            if (hitUnit.hp > 0) {
-              applyStatus(hitUnit, "bleed", { turns: 2 });
-              pushLog(next, `${hitUnit.id} is bleeding!`);
+      case "IMMOBILIZING_ARROW": {
+        const hitUnit = getUnitAt(next, target.x, target.y);
+        if (hitUnit) {
+          const dmg = rollDamage(spell.damage_min, spell.damage_max);
+          dealDamageAt(next, target.x, target.y, dmg, "Immobilizing Arrow", me);
+          if (hitUnit.hp > 0) {
+            const mpRemove = Math.floor(Math.random() * (spell.mp_removal_max - spell.mp_removal_min + 1)) + spell.mp_removal_min;
+            if (mpRemove > 0) {
+              applyStatus(hitUnit, "mp_reduction", { turns: 1, amount: mpRemove });
+              pushLog(next, `${hitUnit.id} loses ${mpRemove} MP for 1 turn!`);
             }
           }
+        } else {
+          pushLog(next, "No target at location");
         }
         return next;
       }
 
-      case "MARKED_DETONATION": {
-        const d = distManhattan(me, target);
-        if (d > spell.range || d === 0) return state;
-        if (!hasLineOfSightToCell(me.x, me.y, target.x, target.y)) return state;
+      case "DISPLACEMENT_ARROW": {
+        if (getUnitAt(next, target.x, target.y)) {
+          pushLog(next, "Must target empty tile!");
+          next.turn.apRemaining += apCost;
+          me.casts_this_turn[spellId] = castsThisTurn;
+          return state;
+        }
 
-        addPendingEffect(next, {
-          spell_id: "MARKED_DETONATION",
-          trigger_turn: next.turn.number + 1,
-          target_x: target.x,
-          target_y: target.y,
-          caster_id: pid,
-        });
-        pushLog(
-          next,
-          `Mark placed at (${target.x},${target.y}) - detonates next turn!`
-        );
+        const crossTiles = getCrossTiles(target.x, target.y, spell.cross_range);
+        const unitsToPush = [];
+
+        for (const tile of crossTiles) {
+          if (inBounds(tile.x, tile.y)) {
+            const unitOnTile = getUnitAt(next, tile.x, tile.y);
+            if (unitOnTile) {
+              unitsToPush.push(unitOnTile);
+            }
+          }
+        }
+
+        for (const unit of unitsToPush) {
+          pushUnitFromCenter(next, unit, target.x, target.y, spell.push_distance);
+        }
+
+        if (unitsToPush.length === 0) {
+          pushLog(next, "No units in displacement area");
+        }
+        return next;
+      }
+
+      case "THIEF_ARROW": {
+        const hitUnit = getUnitAt(next, target.x, target.y);
+        if (!hitUnit) {
+          pushLog(next, "No target at location");
+          return next;
+        }
+
+        // Step 1: Deal damage
+        const dmg = rollDamage(spell.damage_min, spell.damage_max);
+        dealDamageAt(next, target.x, target.y, dmg, "Thief Arrow", me);
+
+        if (hitUnit.hp <= 0) return next;
+
+        // Step 2: Roll random effects
+        const stealAp = Math.random() < (1.0 / 3.0);
+        const giveAp = Math.random() < (1.0 / 3.0);
+        const boostCaster = Math.random() < (1.0 / 5.0);
+        const boostTarget = Math.random() < (1.0 / 5.0);
+        const swapHp = Math.random() < (1.0 / 20.0);
+
+        // Step 3: Apply AP changes
+        if (stealAp) {
+          pushLog(next, `Stole 1 AP from ${hitUnit.id}!`);
+          next.turn.apRemaining += 1;
+        }
+
+        if (giveAp) {
+          pushLog(next, `Gave 1 AP to ${hitUnit.id}!`);
+          next.turn.apRemaining = Math.max(0, next.turn.apRemaining - 1);
+        }
+
+        // Step 4: Apply damage modifiers
+        if (boostCaster) {
+          applyStatus(me, "damage_boost", { turns: 1, percent: 0.20 });
+          pushLog(next, `${pid} gains +20% damage next turn!`);
+        }
+
+        if (boostTarget) {
+          applyStatus(hitUnit, "damage_boost", { turns: 1, percent: 0.20 });
+          pushLog(next, `${hitUnit.id} gains +20% damage next turn!`);
+        }
+
+        // Step 5: HP swap
+        if (swapHp) {
+          const myHp = me.hp;
+          const theirHp = hitUnit.hp;
+          me.hp = theirHp;
+          hitUnit.hp = myHp;
+          pushLog(next, `HP SWAPPED! ${pid}: ${myHp} -> ${theirHp}, ${hitUnit.id}: ${theirHp} -> ${myHp}`);
+          checkWin(next);
+        }
+
         return next;
       }
     }
 
     return next;
+
   } else if (action.type === "END_TURN") {
     pushLog(next, `${pid} ends turn`);
     handleTurnEnd(next);

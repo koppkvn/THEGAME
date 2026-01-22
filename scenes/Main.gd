@@ -833,14 +833,25 @@ func update_ui():
 			btn.modulate = Color(0.5, 0.3, 0.3)
 			btn.disabled = true
 		
+		# Check casts per turn limit
+		var casts_this_turn = unit.casts_this_turn.get(spell_id, 0) if unit.has("casts_this_turn") else 0
+		var max_casts = spell.get("casts_per_turn", 1)
+		if casts_this_turn >= max_casts:
+			btn.modulate = Color(0.5, 0.3, 0.5)
+			btn.disabled = true
+		
 		btn.pressed.connect(_on_spell_clicked.bind(spell_id))
 		container.add_child(btn)
 		
-		# Cooldown / AP cost label
+		# Cooldown / AP cost / Casts remaining label
 		var label = Label.new()
 		if cd > 0:
 			label.text = "CD: %d" % cd
 			label.add_theme_color_override("font_color", Color.RED)
+		elif max_casts > 1:
+			var remaining = max_casts - casts_this_turn
+			label.text = "%d AP (%d/%d)" % [ap_cost, remaining, max_casts]
+			label.add_theme_color_override("font_color", Color.CYAN if remaining > 0 else Color.ORANGE)
 		else:
 			label.text = "%d AP" % ap_cost
 			label.add_theme_color_override("font_color", Color.CYAN)
