@@ -1,6 +1,9 @@
 extends Node2D
 
 @onready var board = $Board
+@onready var hud = $CanvasLayer/HUD
+@onready var top_bar = $CanvasLayer/HUD/TopBar
+@onready var bottom_bar = $CanvasLayer/HUD/BottomBar
 
 @onready var units_container = $Units
 @onready var turn_label = $CanvasLayer/HUD/TopBar/TurnLabel
@@ -14,6 +17,10 @@ extends Node2D
 
 
 # HP Display nodes
+@onready var p1_hp_display = $CanvasLayer/HUD/P1HPDisplay
+@onready var p2_hp_display = $CanvasLayer/HUD/P2HPDisplay
+@onready var p1_name = $CanvasLayer/HUD/P1HPDisplay/P1Name
+@onready var p2_name = $CanvasLayer/HUD/P2HPDisplay/P2Name
 @onready var p1_hp_bar = $CanvasLayer/HUD/P1HPDisplay/P1HPBar
 @onready var p1_hp_label = $CanvasLayer/HUD/P1HPDisplay/P1HPLabel
 @onready var p2_hp_bar = $CanvasLayer/HUD/P2HPDisplay/P2HPBar
@@ -41,6 +48,32 @@ var selected_spell_id = null
 var hovered_tile = null
 var turn_time_remaining: float = 30.0
 const TURN_DURATION: float = 30.0
+
+# Responsive layout
+const UI_BASE_MIN_SIDE = 800.0
+const UI_SCALE_MIN = 1.0
+const UI_SCALE_MAX = 1.6
+const BASE_TOPBAR_HEIGHT = 40.0
+const BASE_SPELL_BTN_SIZE = Vector2(100, 50)
+const BASE_SPELL_FONT_SIZE = 14
+const BASE_SPELL_LABEL_FONT_SIZE = 11
+const BASE_END_TURN_SIZE = Vector2(180, 40)
+const BASE_END_TURN_FONT_SIZE = 16
+const BASE_AP_FONT_SIZE = 20
+const BASE_TIMER_FONT_SIZE = 22
+const BASE_TOPBAR_FONT_SIZE = 16
+const BASE_HP_NAME_FONT_SIZE = 18
+const BASE_HP_LABEL_FONT_SIZE = 14
+const BASE_HP_BAR_SIZE = Vector2(150, 20)
+const BASE_TOPBAR_GAP = 8.0
+const BASE_HUD_EDGE_PADDING = 8.0
+const BOARD_PADDING = 12.0
+const MIN_BOARD_SCALE = 0.6
+const MAX_BOARD_SCALE = 2.0
+
+var ui_scale: float = 1.0
+var is_portrait: bool = false
+var safe_area_rect: Rect2 = Rect2()
 
 # Persistent unit node references for animation
 var unit_nodes: Dictionary = {}
@@ -72,6 +105,7 @@ func _ready():
 	
 	# Show lobby first
 	show_lobby()
+	call_deferred("apply_responsive_layout", 0)
 
 func show_lobby():
 	# Create lobby panel
@@ -315,16 +349,171 @@ func _input(event):
 	if event is InputEventKey and event.pressed and event.keycode == KEY_SPACE:
 		_on_end_turn_pressed()
 
-func _on_viewport_resized():
-	# Recalculate origin
-	Iso.compute_origin(get_viewport_rect().size.x, get_viewport_rect().size.y, Data.BOARD.rows, Data.BOARD.cols)
+func _get_window_size() -> Vector2:
+	return get_viewport_rect().size * _get_canvas_scale()
+
+func _get_canvas_scale() -> float:
+	var scale = get_viewport().get_canvas_transform().get_scale()
+	var value = min(scale.x, scale.y)
+	return value if value > 0.0 else 1.0
+
+func _get_window_safe_area() -> Rect2:
+	var window_size = _get_window_size()
+	var safe_rect = Rect2(Vector2.ZERO, window_size)
+	if ClassDB.class_has_method("DisplayServer", "get_display_safe_area"):
+		var rect = DisplayServer.call("get_display_safe_area")
+		if rect is Rect2:
+			safe_rect = rect
+	elif ClassDB.class_has_method("DisplayServer", "screen_get_usable_rect"):
+		var screen_id = 0
+		if ClassDB.class_has_method("DisplayServer", "window_get_current_screen"):
+			screen_id = DisplayServer.call("window_get_current_screen")
+		var rect = DisplayServer.call("screen_get_usable_rect", screen_id)
+		if rect is Rect2:
+			safe_rect = rect
+	elif ClassDB.class_has_method("OS", "get_window_safe_area"):
+		var rect = OS.call("get_window_safe_area")
+		if rect is Rect2:
+			safe_rect = rect
+	if safe_rect.size == Vector2.ZERO:
+		safe_rect = Rect2(Vector2.ZERO, window_size)
+	return safe_rect
+
+func _window_rect_to_canvas_rect(window_rect: Rect2) -> Rect2:
+	var inv = get_viewport().get_canvas_transform().affine_inverse()
+	var top_left = inv * window_rect.position
+	var bottom_right = inv * (window_rect.position + window_rect.size)
+	return Rect2(top_left, bottom_right - top_left)
+
+func _get_safe_area_rect() -> Rect2:
+	var viewport_rect = get_viewport_rect()
+	var safe_rect = _window_rect_to_canvas_rect(_get_window_safe_area())
+	var clipped = safe_rect.intersection(viewport_rect)
+	return clipped if clipped.size != Vector2.ZERO else viewport_rect
+
+func _update_ui_scale(window_safe_size: Vector2) -> void:
+	var min_side = max(1.0, min(window_safe_size.x, window_safe_size.y))
+	var physical_scale = clamp(UI_BASE_MIN_SIDE / min_side, UI_SCALE_MIN, UI_SCALE_MAX)
+	ui_scale = physical_scale / _get_canvas_scale()
+	is_portrait = window_safe_size.y >= window_safe_size.x
+
+func _apply_safe_area_offsets(viewport_rect: Rect2, safe_rect: Rect2) -> void:
+	hud.offset_left = safe_rect.position.x
+	hud.offset_top = safe_rect.position.y
+	hud.offset_right = safe_rect.position.x + safe_rect.size.x - viewport_rect.size.x
+	hud.offset_bottom = safe_rect.position.y + safe_rect.size.y - viewport_rect.size.y
+
+func _apply_ui_metrics() -> void:
+	var scale = ui_scale
+	var edge_pad = BASE_HUD_EDGE_PADDING * scale
+	var top_bar_height = BASE_TOPBAR_HEIGHT * scale
+	top_bar.add_theme_constant_override("separation", int(BASE_TOPBAR_GAP * scale))
+	top_bar.offset_top = edge_pad
+	top_bar.offset_bottom = edge_pad + top_bar_height
+	
+	turn_label.add_theme_font_size_override("font_size", int(BASE_TOPBAR_FONT_SIZE * scale))
+	p1_status.add_theme_font_size_override("font_size", int(BASE_TOPBAR_FONT_SIZE * scale))
+	p2_status.add_theme_font_size_override("font_size", int(BASE_TOPBAR_FONT_SIZE * scale))
+	
+	p1_name.add_theme_font_size_override("font_size", int(BASE_HP_NAME_FONT_SIZE * scale))
+	p2_name.add_theme_font_size_override("font_size", int(BASE_HP_NAME_FONT_SIZE * scale))
+	p1_hp_label.add_theme_font_size_override("font_size", int(BASE_HP_LABEL_FONT_SIZE * scale))
+	p2_hp_label.add_theme_font_size_override("font_size", int(BASE_HP_LABEL_FONT_SIZE * scale))
+	
+	p1_hp_bar.custom_minimum_size = BASE_HP_BAR_SIZE * scale
+	p2_hp_bar.custom_minimum_size = BASE_HP_BAR_SIZE * scale
+	
+	p1_hp_display.offset_left = 20.0 * scale
+	p1_hp_display.offset_top = 20.0 * scale
+	p1_hp_display.offset_right = 200.0 * scale
+	p1_hp_display.offset_bottom = 80.0 * scale
+	
+	p2_hp_display.offset_left = -200.0 * scale
+	p2_hp_display.offset_top = 20.0 * scale
+	p2_hp_display.offset_right = -20.0 * scale
+	p2_hp_display.offset_bottom = 80.0 * scale
+	
+	timer_label.add_theme_font_size_override("font_size", int(BASE_TIMER_FONT_SIZE * scale))
+	timer_label.offset_left = -130.0 * scale
+	timer_label.offset_top = -50.0 * scale
+	timer_label.offset_right = -20.0 * scale
+	timer_label.offset_bottom = -15.0 * scale
+	
+	ap_label.add_theme_font_size_override("font_size", int(BASE_AP_FONT_SIZE * scale))
+	bottom_bar.add_theme_constant_override("separation", int(BASE_TOPBAR_GAP * scale))
+	spell_container.add_theme_constant_override("h_separation", int(BASE_TOPBAR_GAP * scale))
+	spell_container.add_theme_constant_override("v_separation", int(BASE_TOPBAR_GAP * scale))
+	
+	end_turn_btn.add_theme_font_size_override("font_size", int(BASE_END_TURN_FONT_SIZE * scale))
+	end_turn_btn.custom_minimum_size = BASE_END_TURN_SIZE * scale
+
+func _get_spell_columns(window_safe_size: Vector2) -> int:
+	if is_portrait:
+		return 3
+	if window_safe_size.x < 900.0:
+		return 4
+	return 5
+
+func _estimate_bottom_bar_height(spell_count: int, columns: int) -> float:
+	var scale = ui_scale
+	var separation = int(BASE_TOPBAR_GAP * scale)
+	var ap_height = max(ap_label.get_combined_minimum_size().y, BASE_AP_FONT_SIZE * scale)
+	var end_turn_height = max(end_turn_btn.custom_minimum_size.y, BASE_END_TURN_SIZE.y * scale)
+	var button_height = BASE_SPELL_BTN_SIZE.y * scale
+	var label_height = int(BASE_SPELL_LABEL_FONT_SIZE * scale) + int(6 * scale)
+	var row_height = button_height + label_height
+	var rows = max(1, int(ceil(float(spell_count) / float(max(columns, 1)))))
+	var spells_height = rows * row_height + max(0, rows - 1) * separation
+	return ap_height + separation + spells_height + separation + end_turn_height
+
+func _get_board_rect(safe_rect: Rect2, top_bar_height: float, bottom_bar_height: float) -> Rect2:
+	var padding = BOARD_PADDING * ui_scale
+	var pos = safe_rect.position + Vector2(padding, top_bar_height + padding)
+	var size = safe_rect.size - Vector2(padding * 2.0, top_bar_height + bottom_bar_height + padding * 2.0)
+	if size.x <= 0.0 or size.y <= 0.0:
+		return safe_rect
+	return Rect2(pos, size)
+
+func _update_board_scale(board_rect: Rect2) -> void:
+	var base_size = Iso.get_board_size(Data.BOARD.rows, Data.BOARD.cols, Iso.BASE_TILE_W, Iso.BASE_TILE_H)
+	if base_size.x <= 0.0 or base_size.y <= 0.0:
+		return
+	var scale = min(board_rect.size.x / base_size.x, board_rect.size.y / base_size.y)
+	scale = clamp(scale, MIN_BOARD_SCALE, MAX_BOARD_SCALE)
+	Iso.set_tile_scale(scale)
+	Iso.compute_origin_in_rect(board_rect, Data.BOARD.rows, Data.BOARD.cols)
+
+func _get_spell_count_for_layout() -> int:
+	return Data.get_character_spells("RANGER").size()
+
+func apply_responsive_layout(spell_count: int) -> void:
+	var viewport_rect = get_viewport_rect()
+	var window_safe = _get_window_safe_area()
+	_update_ui_scale(window_safe.size)
+	
+	safe_area_rect = _get_safe_area_rect()
+	_apply_safe_area_offsets(viewport_rect, safe_area_rect)
+	_apply_ui_metrics()
+	
+	var columns = _get_spell_columns(window_safe.size)
+	spell_container.columns = columns
+	
+	var bottom_bar_height = _estimate_bottom_bar_height(spell_count, columns)
+	bottom_bar.offset_top = -bottom_bar_height
+	bottom_bar.offset_bottom = 0.0
+	
+	var top_bar_height = top_bar.offset_bottom - top_bar.offset_top
+	var board_rect = _get_board_rect(safe_area_rect, top_bar_height, bottom_bar_height)
+	_update_board_scale(board_rect)
+	
 	board.queue_redraw()
+
+func _on_viewport_resized():
+	apply_responsive_layout(_get_spell_count_for_layout())
 	update_units_visuals()
 
 func update_all():
-	# Ensure Origin is set
-	Iso.compute_origin(get_viewport_rect().size.x, get_viewport_rect().size.y, Data.BOARD.rows, Data.BOARD.cols)
-	
+	apply_responsive_layout(_get_spell_count_for_layout())
 	update_ui()
 	update_board_visuals()
 	update_units_visuals()
@@ -387,6 +576,10 @@ func update_ui():
 	
 	# Get spells dynamically from character class
 	var spell_list = Data.get_character_spells(char_id)
+	var button_size = BASE_SPELL_BTN_SIZE * ui_scale
+	var spell_font_size = int(BASE_SPELL_FONT_SIZE * ui_scale)
+	var cost_font_size = int(BASE_SPELL_LABEL_FONT_SIZE * ui_scale)
+	var label_spacing = int(4 * ui_scale)
 	
 	for spell_id in spell_list:
 		var spell = Data.get_spell(spell_id)
@@ -396,11 +589,15 @@ func update_ui():
 		# Create container for spell button + cooldown label
 		var container = VBoxContainer.new()
 		container.alignment = BoxContainer.ALIGNMENT_CENTER
+		container.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		container.add_theme_constant_override("separation", label_spacing)
 		
 		# Use text button (no spell icons available yet)
 		var btn = Button.new()
 		btn.text = spell.label
-		btn.custom_minimum_size = Vector2(100, 50)
+		btn.custom_minimum_size = button_size
+		btn.add_theme_font_size_override("font_size", spell_font_size)
+		btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		
 		# Custom tooltip on hover (replaces tooltip_text)
 		btn.mouse_entered.connect(show_spell_tooltip.bind(container, spell.desc))
@@ -439,7 +636,7 @@ func update_ui():
 			label.text = "%d AP" % ap_cost
 			label.add_theme_color_override("font_color", Color.CYAN)
 		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		label.add_theme_font_size_override("font_size", 11)
+		label.add_theme_font_size_override("font_size", cost_font_size)
 		container.add_child(label)
 		
 		spell_container.add_child(container)
@@ -532,11 +729,13 @@ func update_units_visuals():
 			u_node.set_script(UnitScene)
 			units_container.add_child(u_node)
 			u_node.set_unit(unit_data)
+			u_node.scale = Vector2.ONE * Iso.get_tile_scale()
 			unit_nodes[pid] = u_node
 		else:
 			# Animate existing unit to new position
 			var u_node = unit_nodes[pid]
 			u_node.unit_data = unit_data
+			u_node.scale = Vector2.ONE * Iso.get_tile_scale()
 			u_node.queue_redraw()
 			
 			# Check if we have a pending path for this unit

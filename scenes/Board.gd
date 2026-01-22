@@ -153,6 +153,7 @@ func draw_iso_sprite(col, row, texture: Texture2D):
 
 func draw_tile(col, row, fill_color, stroke_color, width=1.0):
 	var poly = Iso.get_tile_polygon(col, row)
+	var stroke_width = width * max(Iso.get_tile_scale(), 0.75)
 	
 	if fill_color:
 		draw_colored_polygon(poly, fill_color)
@@ -161,5 +162,5 @@ func draw_tile(col, row, fill_color, stroke_color, width=1.0):
 		# Godot 4 draw_polyline needs closed loop
 		var pts = Array(poly)
 		pts.append(poly[0])
-		draw_polyline(PackedVector2Array(pts), stroke_color, width)
+		draw_polyline(PackedVector2Array(pts), stroke_color, stroke_width)
 
