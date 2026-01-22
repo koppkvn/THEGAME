@@ -1,7 +1,7 @@
 // rules.js - Server-side game rules (synced with Rules.gd)
 // Anti-Gravity Character Spell System
 
-const BOARD = { cols: 9, rows: 9, ringOut: true };
+const BOARD = { cols: 9, rows: 9, ringOut: false };
 
 const OBSTACLES = [
   { x: 4, y: 4 },

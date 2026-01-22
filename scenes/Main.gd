@@ -279,9 +279,14 @@ func _process(delta):
 	if game_state and game_state.winner == null:
 		if not multiplayer_mode or game_state.turn.currentPlayerId == my_player_id:
 			turn_time_remaining -= delta
+			# Clamp to 0 to prevent negative display
+			if turn_time_remaining < 0:
+				turn_time_remaining = 0
 			timer_label.text = "⏱️ %ds" % int(ceil(turn_time_remaining))
 			
 			if turn_time_remaining <= 0:
+				# Reset timer before ending turn to prevent re-triggering
+				turn_time_remaining = TURN_DURATION
 				_on_end_turn_pressed()
 	
 	# Handle Grid Hover
