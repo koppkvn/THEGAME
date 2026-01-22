@@ -52,7 +52,7 @@ const TURN_DURATION: float = 30.0
 # Responsive layout
 const UI_BASE_MIN_SIDE = 800.0
 const UI_SCALE_MIN = 1.0
-const UI_SCALE_MAX = 1.6
+const UI_SCALE_MAX = 2.0
 const BASE_TOPBAR_HEIGHT = 40.0
 const BASE_SPELL_BTN_SIZE = Vector2(100, 50)
 const BASE_SPELL_FONT_SIZE = 14
@@ -73,8 +73,10 @@ const MAX_BOARD_SCALE = 2.0
 const BOARD_TILT_Y_SCALE = 0.85
 
 var ui_scale: float = 1.0
+var ui_metrics_scale: float = 1.0
 var is_portrait: bool = false
 var safe_area_rect: Rect2 = Rect2()
+var window_safe_size: Vector2 = Vector2.ZERO
 
 # Persistent unit node references for animation
 var unit_nodes: Dictionary = {}
@@ -339,16 +341,32 @@ func _input(event):
 		return
 	
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
-		if hovered_tile != null:
-			try_action_at(hovered_tile.x, hovered_tile.y)
-		elif selected_spell_id != null:
-			# Clicked outside the board while a spell is selected - deselect it
-			selected_spell_id = null
-			update_all()
+		_handle_pointer_press(event.position, true)
+	
+	if event is InputEventScreenTouch and event.pressed:
+		_handle_pointer_press(event.position, false)
 	
 	# Spacebar to end turn
 	if event is InputEventKey and event.pressed and event.keycode == KEY_SPACE:
 		_on_end_turn_pressed()
+
+func _screen_to_canvas(pos: Vector2) -> Vector2:
+	return get_viewport().get_canvas_transform().affine_inverse() * pos
+
+func _get_grid_from_screen_pos(pos: Vector2) -> Vector2i:
+	var canvas_pos = _screen_to_canvas(pos)
+	return Iso.pixel_to_grid(canvas_pos.x, canvas_pos.y)
+
+func _handle_pointer_press(screen_pos: Vector2, allow_deselect_outside: bool = true) -> void:
+	var grid = _get_grid_from_screen_pos(screen_pos)
+	if Rules.in_bounds(grid.x, grid.y):
+		hovered_tile = grid
+		update_board_visuals()
+		try_action_at(grid.x, grid.y)
+	elif allow_deselect_outside and selected_spell_id != null:
+		# Clicked outside the board while a spell is selected - deselect it
+		selected_spell_id = null
+		update_all()
 
 func _get_window_size() -> Vector2:
 	return get_viewport_rect().size * _get_canvas_scale()
@@ -392,11 +410,45 @@ func _get_safe_area_rect() -> Rect2:
 	var clipped = safe_rect.intersection(viewport_rect)
 	return clipped if clipped.size != Vector2.ZERO else viewport_rect
 
+func _get_ui_metrics_boost(min_side: float) -> float:
+	if min_side <= 600.0:
+		return 1.25
+	if min_side <= 800.0:
+		return 1.15
+	if min_side <= 1000.0:
+		return 1.1
+	return 1.0
+
+func _is_compact_layout(min_side: float) -> bool:
+	return is_portrait or min_side <= 900.0
+
+func _get_spell_button_size(columns: int) -> Vector2:
+	var scale = ui_metrics_scale
+	if not _is_compact_layout(min(window_safe_size.x, window_safe_size.y)):
+		return BASE_SPELL_BTN_SIZE * scale
+	var padding = BASE_HUD_EDGE_PADDING * scale
+	var separation = int(BASE_TOPBAR_GAP * scale)
+	var available_width = max(0.0, safe_area_rect.size.x - padding * 2.0 - separation * max(columns - 1, 0))
+	var width = available_width / max(columns, 1)
+	var height = max(BASE_SPELL_BTN_SIZE.y * scale, width * 0.6)
+	return Vector2(width, height)
+
+func _get_end_turn_button_size() -> Vector2:
+	var scale = ui_metrics_scale
+	var size = BASE_END_TURN_SIZE * scale
+	if _is_compact_layout(min(window_safe_size.x, window_safe_size.y)):
+		var padding = BASE_HUD_EDGE_PADDING * scale
+		size.x = max(size.x, safe_area_rect.size.x - padding * 2.0)
+		size.y = max(size.y, 64.0 * scale)
+	return size
+
 func _update_ui_scale(window_safe_size: Vector2) -> void:
 	var min_side = max(1.0, min(window_safe_size.x, window_safe_size.y))
 	var physical_scale = clamp(UI_BASE_MIN_SIDE / min_side, UI_SCALE_MIN, UI_SCALE_MAX)
 	ui_scale = physical_scale / _get_canvas_scale()
 	is_portrait = window_safe_size.y >= window_safe_size.x
+	ui_metrics_scale = min(ui_scale * _get_ui_metrics_boost(min_side), 2.6)
+	self.window_safe_size = window_safe_size
 
 func _apply_safe_area_offsets(viewport_rect: Rect2, safe_rect: Rect2) -> void:
 	hud.offset_left = safe_rect.position.x
@@ -405,7 +457,7 @@ func _apply_safe_area_offsets(viewport_rect: Rect2, safe_rect: Rect2) -> void:
 	hud.offset_bottom = safe_rect.position.y + safe_rect.size.y - viewport_rect.size.y
 
 func _apply_ui_metrics() -> void:
-	var scale = ui_scale
+	var scale = ui_metrics_scale
 	var edge_pad = BASE_HUD_EDGE_PADDING * scale
 	var top_bar_height = BASE_TOPBAR_HEIGHT * scale
 	top_bar.add_theme_constant_override("separation", int(BASE_TOPBAR_GAP * scale))
@@ -446,22 +498,23 @@ func _apply_ui_metrics() -> void:
 	spell_container.add_theme_constant_override("v_separation", int(BASE_TOPBAR_GAP * scale))
 	
 	end_turn_btn.add_theme_font_size_override("font_size", int(BASE_END_TURN_FONT_SIZE * scale))
-	end_turn_btn.custom_minimum_size = BASE_END_TURN_SIZE * scale
+	end_turn_btn.custom_minimum_size = _get_end_turn_button_size()
 
 func _get_spell_columns(window_safe_size: Vector2) -> int:
-	if is_portrait:
+	var min_side = min(window_safe_size.x, window_safe_size.y)
+	if _is_compact_layout(min_side):
 		return 3
 	if window_safe_size.x < 900.0:
 		return 4
 	return 5
 
 func _estimate_bottom_bar_height(spell_count: int, columns: int) -> float:
-	var scale = ui_scale
+	var scale = ui_metrics_scale
 	var separation = int(BASE_TOPBAR_GAP * scale)
 	var ap_height = max(ap_label.get_combined_minimum_size().y, BASE_AP_FONT_SIZE * scale)
 	var end_turn_height = max(end_turn_btn.custom_minimum_size.y, BASE_END_TURN_SIZE.y * scale)
-	var button_height = BASE_SPELL_BTN_SIZE.y * scale
-	var label_height = int(BASE_SPELL_LABEL_FONT_SIZE * scale) + int(6 * scale)
+	var button_height = _get_spell_button_size(columns).y
+	var label_height = int(BASE_SPELL_LABEL_FONT_SIZE * scale) + int(8 * scale)
 	var row_height = button_height + label_height
 	var rows = max(1, int(ceil(float(spell_count) / float(max(columns, 1)))))
 	var spells_height = rows * row_height + max(0, rows - 1) * separation
@@ -578,10 +631,10 @@ func update_ui():
 	
 	# Get spells dynamically from character class
 	var spell_list = Data.get_character_spells(char_id)
-	var button_size = BASE_SPELL_BTN_SIZE * ui_scale
-	var spell_font_size = int(BASE_SPELL_FONT_SIZE * ui_scale)
-	var cost_font_size = int(BASE_SPELL_LABEL_FONT_SIZE * ui_scale)
-	var label_spacing = int(4 * ui_scale)
+	var button_size = _get_spell_button_size(spell_container.columns)
+	var spell_font_size = int(BASE_SPELL_FONT_SIZE * ui_metrics_scale)
+	var cost_font_size = int(BASE_SPELL_LABEL_FONT_SIZE * ui_metrics_scale)
+	var label_spacing = int(6 * ui_metrics_scale)
 	
 	for spell_id in spell_list:
 		var spell = Data.get_spell(spell_id)

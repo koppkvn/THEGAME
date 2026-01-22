@@ -1,8 +1,8 @@
 class_name Data
 
 const BOARD = {
-	"cols": 10,
-	"rows": 10,
+	"cols": 9,
+	"rows": 9,
 	"ring_out": true
 }
 
