@@ -14,10 +14,10 @@ const OFFLINE_URL = 'index.offline.html';
 const ENSURE_CROSSORIGIN_ISOLATION_HEADERS = true;
 // Files that will be cached on load.
 /** @type {string[]} */
-const CACHED_FILES = ["index.html","index.js","index.offline.html","index.icon.png","index.apple-touch-icon.png","index.audio.worklet.js","index.audio.position.worklet.js"];
+const CACHED_FILES = ["index.html", "index.js", "index.offline.html", "index.icon.png", "index.apple-touch-icon.png", "index.audio.worklet.js", "index.audio.position.worklet.js"];
 // Files that we might not want the user to preload, and will only be cached on first load.
 /** @type {string[]} */
-const CACHEABLE_FILES = ["index.wasm","index.pck"];
+const CACHEABLE_FILES = ["index.wasm", "index.pck"];
 const FULL_CACHE = CACHED_FILES.concat(CACHEABLE_FILES);
 
 self.addEventListener('install', (event) => {
@@ -42,6 +42,9 @@ self.addEventListener('activate', (event) => {
  * @returns {Response}
  */
 function ensureCrossOriginIsolationHeaders(response) {
+	if (!response || response.status < 200 || response.status > 599 || response.type === 'opaque' || response.type === 'opaqueredirect') {
+		return response;
+	}
 	if (response.headers.get('Cross-Origin-Embedder-Policy') === 'require-corp'
 		&& response.headers.get('Cross-Origin-Opener-Policy') === 'same-origin') {
 		return response;
@@ -100,6 +103,7 @@ self.addEventListener(
 		const base = referrer.slice(0, referrer.lastIndexOf('/') + 1);
 		const local = url.startsWith(base) ? url.replace(base, '') : '';
 		const isCacheable = FULL_CACHE.some((v) => v === local) || (base === referrer && base.endsWith(CACHED_FILES[0]));
+		const isSameOrigin = new URL(url).origin === self.location.origin;
 		if (isNavigate || isCacheable) {
 			event.respondWith((async () => {
 				// Try to use cache first
@@ -132,7 +136,7 @@ self.addEventListener(
 				const response = await fetchAndCache(event, cache, isCacheable);
 				return response;
 			})());
-		} else if (ENSURE_CROSSORIGIN_ISOLATION_HEADERS) {
+		} else if (ENSURE_CROSSORIGIN_ISOLATION_HEADERS && isSameOrigin) {
 			event.respondWith((async () => {
 				let response = await fetch(event.request);
 				response = ensureCrossOriginIsolationHeaders(response);
