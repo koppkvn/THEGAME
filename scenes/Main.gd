@@ -29,7 +29,13 @@ extends Node2D
 
 # Lobby UI (created dynamically)
 var lobby_panel: Control
+var lobby_vbox: VBoxContainer
+var lobby_title: Label
+var lobby_create_btn: Button
+var lobby_join_label: Label
 var room_code_input: LineEdit
+var lobby_join_btn: Button
+var lobby_offline_btn: Button
 var status_label: Label
 
 # Game Over UI
@@ -73,6 +79,17 @@ const MAX_BOARD_SCALE = 2.0
 const BOARD_TILT_Y_SCALE = 0.85
 const BASE_LOG_FONT_SIZE = 14
 const BASE_TOOLTIP_FONT_SIZE = 14
+const BASE_LOBBY_PANEL_SIZE = Vector2(400, 350)
+const BASE_LOBBY_TITLE_FONT_SIZE = 24
+const BASE_LOBBY_LABEL_FONT_SIZE = 16
+const BASE_LOBBY_BUTTON_FONT_SIZE = 18
+const BASE_LOBBY_INPUT_FONT_SIZE = 16
+const BASE_LOBBY_BUTTON_SIZE = Vector2(200, 40)
+const BASE_LOBBY_INPUT_SIZE = Vector2(200, 35)
+const BASE_LOBBY_VBOX_PADDING = 20.0
+const BASE_LOBBY_VBOX_SEPARATION = 15.0
+const TOUCH_MOUSE_DEDUP_MS = 240
+const TOUCH_MOUSE_DEDUP_DIST = 24.0
 
 var ui_scale: float = 1.0
 var ui_metrics_scale: float = 1.0
@@ -80,6 +97,10 @@ var ui_text_scale: float = 1.0
 var is_portrait: bool = false
 var safe_area_rect: Rect2 = Rect2()
 var window_safe_size: Vector2 = Vector2.ZERO
+var emulate_mouse_from_touch: bool = false
+var last_touch_msec: int = -1000
+var last_touch_pos: Vector2 = Vector2.ZERO
+var last_touch_handled: bool = false
 
 # Persistent unit node references for animation
 var unit_nodes: Dictionary = {}
@@ -103,8 +124,9 @@ const SERVER_URL = "wss://thegame-production.up.railway.app"
 
 func _ready():
 	if OS.has_feature("mobile") or OS.has_feature("web"):
-		# Prevent duplicate touch + mouse events on mobile/web.
-		Input.set_emulate_mouse_from_touch(false)
+		# Allow UI controls to receive touch via mouse emulation.
+		emulate_mouse_from_touch = true
+		Input.set_emulate_mouse_from_touch(true)
 	# Connect Signals
 	end_turn_btn.pressed.connect(_on_end_turn_pressed)
 	get_viewport().size_changed.connect(_on_viewport_resized)
@@ -119,65 +141,66 @@ func _ready():
 func show_lobby():
 	# Create lobby panel
 	lobby_panel = Panel.new()
-	lobby_panel.custom_minimum_size = Vector2(400, 350)
+	lobby_panel.custom_minimum_size = BASE_LOBBY_PANEL_SIZE
 	lobby_panel.set_anchors_preset(Control.PRESET_CENTER)
-	lobby_panel.set_anchor_and_offset(SIDE_LEFT, 0.5, -200)
-	lobby_panel.set_anchor_and_offset(SIDE_RIGHT, 0.5, 200)
-	lobby_panel.set_anchor_and_offset(SIDE_TOP, 0.5, -175)
-	lobby_panel.set_anchor_and_offset(SIDE_BOTTOM, 0.5, 175)
+	lobby_panel.set_anchor_and_offset(SIDE_LEFT, 0.5, -BASE_LOBBY_PANEL_SIZE.x * 0.5)
+	lobby_panel.set_anchor_and_offset(SIDE_RIGHT, 0.5, BASE_LOBBY_PANEL_SIZE.x * 0.5)
+	lobby_panel.set_anchor_and_offset(SIDE_TOP, 0.5, -BASE_LOBBY_PANEL_SIZE.y * 0.5)
+	lobby_panel.set_anchor_and_offset(SIDE_BOTTOM, 0.5, BASE_LOBBY_PANEL_SIZE.y * 0.5)
 	
-	var vbox = VBoxContainer.new()
-	vbox.set_anchors_preset(Control.PRESET_FULL_RECT)
-	vbox.set_anchor_and_offset(SIDE_LEFT, 0, 20)
-	vbox.set_anchor_and_offset(SIDE_RIGHT, 1, -20)
-	vbox.set_anchor_and_offset(SIDE_TOP, 0, 20)
-	vbox.set_anchor_and_offset(SIDE_BOTTOM, 1, -20)
-	vbox.add_theme_constant_override("separation", 15)
-	vbox.alignment = BoxContainer.ALIGNMENT_CENTER
+	lobby_vbox = VBoxContainer.new()
+	lobby_vbox.set_anchors_preset(Control.PRESET_FULL_RECT)
+	lobby_vbox.set_anchor_and_offset(SIDE_LEFT, 0, BASE_LOBBY_VBOX_PADDING)
+	lobby_vbox.set_anchor_and_offset(SIDE_RIGHT, 1, -BASE_LOBBY_VBOX_PADDING)
+	lobby_vbox.set_anchor_and_offset(SIDE_TOP, 0, BASE_LOBBY_VBOX_PADDING)
+	lobby_vbox.set_anchor_and_offset(SIDE_BOTTOM, 1, -BASE_LOBBY_VBOX_PADDING)
+	lobby_vbox.add_theme_constant_override("separation", int(BASE_LOBBY_VBOX_SEPARATION))
+	lobby_vbox.alignment = BoxContainer.ALIGNMENT_CENTER
 	
-	var title = Label.new()
-	title.text = "TACTICAL DUEL - ONLINE PVP"
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.add_theme_font_size_override("font_size", 24)
-	vbox.add_child(title)
+	lobby_title = Label.new()
+	lobby_title.text = "TACTICAL DUEL - ONLINE PVP"
+	lobby_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lobby_title.add_theme_font_size_override("font_size", BASE_LOBBY_TITLE_FONT_SIZE)
+	lobby_vbox.add_child(lobby_title)
 	
-	var create_btn = Button.new()
-	create_btn.text = "Create Room"
-	create_btn.custom_minimum_size = Vector2(200, 40)
-	create_btn.pressed.connect(_on_create_room)
-	vbox.add_child(create_btn)
+	lobby_create_btn = Button.new()
+	lobby_create_btn.text = "Create Room"
+	lobby_create_btn.custom_minimum_size = BASE_LOBBY_BUTTON_SIZE
+	lobby_create_btn.pressed.connect(_on_create_room)
+	lobby_vbox.add_child(lobby_create_btn)
 	
-	var join_label = Label.new()
-	join_label.text = "Or join with room code:"
-	join_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	vbox.add_child(join_label)
+	lobby_join_label = Label.new()
+	lobby_join_label.text = "Or join with room code:"
+	lobby_join_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lobby_vbox.add_child(lobby_join_label)
 	
 	room_code_input = LineEdit.new()
 	room_code_input.placeholder_text = "Enter room code..."
-	room_code_input.custom_minimum_size = Vector2(200, 35)
+	room_code_input.custom_minimum_size = BASE_LOBBY_INPUT_SIZE
 	room_code_input.alignment = HORIZONTAL_ALIGNMENT_CENTER
-	vbox.add_child(room_code_input)
+	lobby_vbox.add_child(room_code_input)
 	
-	var join_btn = Button.new()
-	join_btn.text = "Join Room"
-	join_btn.custom_minimum_size = Vector2(200, 40)
-	join_btn.pressed.connect(_on_join_room)
-	vbox.add_child(join_btn)
+	lobby_join_btn = Button.new()
+	lobby_join_btn.text = "Join Room"
+	lobby_join_btn.custom_minimum_size = BASE_LOBBY_BUTTON_SIZE
+	lobby_join_btn.pressed.connect(_on_join_room)
+	lobby_vbox.add_child(lobby_join_btn)
 	
-	var offline_btn = Button.new()
-	offline_btn.text = "Play Offline (Local)"
-	offline_btn.custom_minimum_size = Vector2(200, 40)
-	offline_btn.pressed.connect(_on_play_offline)
-	vbox.add_child(offline_btn)
+	lobby_offline_btn = Button.new()
+	lobby_offline_btn.text = "Play Offline (Local)"
+	lobby_offline_btn.custom_minimum_size = BASE_LOBBY_BUTTON_SIZE
+	lobby_offline_btn.pressed.connect(_on_play_offline)
+	lobby_vbox.add_child(lobby_offline_btn)
 	
 	status_label = Label.new()
 	status_label.text = ""
 	status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	status_label.add_theme_color_override("font_color", Color.YELLOW)
-	vbox.add_child(status_label)
+	lobby_vbox.add_child(status_label)
 	
-	lobby_panel.add_child(vbox)
+	lobby_panel.add_child(lobby_vbox)
 	$CanvasLayer.add_child(lobby_panel)
+	_apply_lobby_metrics()
 	
 	# Hide game UI
 	$CanvasLayer/HUD.visible = false
@@ -346,11 +369,22 @@ func _input(event):
 	if multiplayer_mode and game_state.turn.currentPlayerId != my_player_id:
 		return
 	
-	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
-		_handle_pointer_press(event.position, true)
-	
 	if event is InputEventScreenTouch and event.pressed:
-		_handle_pointer_press(event.position, false)
+		last_touch_msec = Time.get_ticks_msec()
+		last_touch_pos = event.position
+		last_touch_handled = not emulate_mouse_from_touch
+		if last_touch_handled:
+			_handle_pointer_press(event.position, false)
+		return
+	
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		if last_touch_handled:
+			var delta = Time.get_ticks_msec() - last_touch_msec
+			if delta >= 0 and delta <= TOUCH_MOUSE_DEDUP_MS and last_touch_pos.distance_to(event.position) <= TOUCH_MOUSE_DEDUP_DIST:
+				last_touch_handled = false
+				return
+			last_touch_handled = false
+		_handle_pointer_press(event.position, true)
 	
 	# Spacebar to end turn
 	if event is InputEventKey and event.pressed and event.keycode == KEY_SPACE:
@@ -553,6 +587,7 @@ func _apply_ui_metrics() -> void:
 	log_panel.add_theme_font_size_override("normal_font_size", int(BASE_LOG_FONT_SIZE * text_scale))
 	if spell_tooltip_label:
 		spell_tooltip_label.add_theme_font_size_override("normal_font_size", int(BASE_TOOLTIP_FONT_SIZE * text_scale))
+	_apply_lobby_metrics()
 
 func _get_spell_columns(window_safe_size: Vector2) -> int:
 	var min_side = min(window_safe_size.x, window_safe_size.y)
@@ -575,6 +610,58 @@ func _estimate_bottom_bar_height(spell_count: int, columns: int) -> float:
 	var rows = max(1, int(ceil(float(spell_count) / float(max(columns, 1)))))
 	var spells_height = rows * row_height + max(0, rows - 1) * separation
 	return ap_height + separation + spells_height + separation + end_turn_height
+
+func _apply_lobby_metrics() -> void:
+	if lobby_panel == null or not is_instance_valid(lobby_panel):
+		return
+	if safe_area_rect.size == Vector2.ZERO:
+		safe_area_rect = _get_safe_area_rect()
+		_update_ui_scale(safe_area_rect.size)
+	
+	var scale = ui_text_scale
+	var panel_size = BASE_LOBBY_PANEL_SIZE * scale
+	var max_w = safe_area_rect.size.x * 0.94
+	var max_h = safe_area_rect.size.y * 0.9
+	panel_size.x = min(panel_size.x, max_w)
+	panel_size.y = min(panel_size.y, max_h)
+	panel_size.x = max(panel_size.x, 260.0)
+	panel_size.y = max(panel_size.y, 240.0)
+	
+	lobby_panel.custom_minimum_size = panel_size
+	lobby_panel.set_anchor_and_offset(SIDE_LEFT, 0.5, -panel_size.x * 0.5)
+	lobby_panel.set_anchor_and_offset(SIDE_RIGHT, 0.5, panel_size.x * 0.5)
+	lobby_panel.set_anchor_and_offset(SIDE_TOP, 0.5, -panel_size.y * 0.5)
+	lobby_panel.set_anchor_and_offset(SIDE_BOTTOM, 0.5, panel_size.y * 0.5)
+	
+	if lobby_vbox and is_instance_valid(lobby_vbox):
+		var edge_pad = BASE_LOBBY_VBOX_PADDING * ui_metrics_scale
+		lobby_vbox.set_anchor_and_offset(SIDE_LEFT, 0, edge_pad)
+		lobby_vbox.set_anchor_and_offset(SIDE_RIGHT, 1, -edge_pad)
+		lobby_vbox.set_anchor_and_offset(SIDE_TOP, 0, edge_pad)
+		lobby_vbox.set_anchor_and_offset(SIDE_BOTTOM, 1, -edge_pad)
+		lobby_vbox.add_theme_constant_override("separation", int(BASE_LOBBY_VBOX_SEPARATION * ui_metrics_scale))
+	
+	if lobby_title and is_instance_valid(lobby_title):
+		lobby_title.add_theme_font_size_override("font_size", int(BASE_LOBBY_TITLE_FONT_SIZE * scale))
+	if lobby_join_label and is_instance_valid(lobby_join_label):
+		lobby_join_label.add_theme_font_size_override("font_size", int(BASE_LOBBY_LABEL_FONT_SIZE * scale))
+	if status_label and is_instance_valid(status_label):
+		status_label.add_theme_font_size_override("font_size", int(BASE_LOBBY_LABEL_FONT_SIZE * scale))
+	
+	var btn_size = BASE_LOBBY_BUTTON_SIZE * scale
+	if lobby_create_btn and is_instance_valid(lobby_create_btn):
+		lobby_create_btn.custom_minimum_size = btn_size
+		lobby_create_btn.add_theme_font_size_override("font_size", int(BASE_LOBBY_BUTTON_FONT_SIZE * scale))
+	if lobby_join_btn and is_instance_valid(lobby_join_btn):
+		lobby_join_btn.custom_minimum_size = btn_size
+		lobby_join_btn.add_theme_font_size_override("font_size", int(BASE_LOBBY_BUTTON_FONT_SIZE * scale))
+	if lobby_offline_btn and is_instance_valid(lobby_offline_btn):
+		lobby_offline_btn.custom_minimum_size = btn_size
+		lobby_offline_btn.add_theme_font_size_override("font_size", int(BASE_LOBBY_BUTTON_FONT_SIZE * scale))
+	
+	if room_code_input and is_instance_valid(room_code_input):
+		room_code_input.custom_minimum_size = BASE_LOBBY_INPUT_SIZE * scale
+		room_code_input.add_theme_font_size_override("font_size", int(BASE_LOBBY_INPUT_FONT_SIZE * scale))
 
 func _get_board_rect(safe_rect: Rect2, top_bar_height: float, bottom_bar_height: float) -> Rect2:
 	var padding = BOARD_PADDING * ui_scale
