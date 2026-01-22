@@ -12,8 +12,8 @@ func set_unit(data: Dictionary):
 func _draw():
 	if not unit_data: return
 	
-	var radius = 12.0
-	var height = 30.0
+	var radius = 14.0
+	var height = 36.0
 	
 	# Shadow
 	draw_circle(Vector2(0, 0), radius, Color(0, 0, 0, 0.4))
@@ -39,8 +39,8 @@ func _draw():
 	
 	# Text Label
 	var font = SystemFont.new()
-	var font_size = 12
-	draw_string(font, Vector2(-8, -height - 5), unit_data.id, HORIZONTAL_ALIGNMENT_CENTER, -1, font_size)
+	var font_size = 13
+	draw_string(font, Vector2(-radius, -height - 6), unit_data.id, HORIZONTAL_ALIGNMENT_CENTER, radius * 2.0, font_size)
 	
 	# Guard Icon
 	if unit_data.status.get("guard"):

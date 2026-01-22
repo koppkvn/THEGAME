@@ -46,7 +46,7 @@ func _draw():
 			
 			# Draw Base
 			if Data.is_obstacle(col, row):
-				draw_tile(col, row, Color(0.3, 0.3, 0.35, 1.0), Color(0.2, 0.2, 0.25, 1.0), 1.0)
+				draw_obstacle_tile(col, row)
 				continue
 			else:
 				draw_tile(col, row, Color(0.5, 0.5, 0.55, 1.0), Color(0.3, 0.3, 0.35, 1.0), 1.0)
@@ -109,46 +109,8 @@ func draw_iso_sprite(col, row, texture: Texture2D):
 	if not texture: return
 	
 	var center = Iso.grid_to_screen(col, row)
-	
-	# The grid_to_screen gives the CENTER of the top diamond.
-	# The sprite has a top face and a side face.
-	# We want the center of the top face in the sprite to align with 'center'.
-	# Since these generated assets are roughly isometric cubes, the 'center' of the top face
-	# is usually about 1/4th down the image height (or half the top diamond height).
-	# However, simpler alignment: align the horizontal center, and offset Y slightly up.
-	
-	# Simple centering (Naive):
-	# var pos = center - texture.get_size() / 2
-	
-	# Adjusted for "Floor":
-	# We want the tile to "sit" on the grid.
-	# If the image is 96px wide, and the grid cell is 96px wide.
-	# The texture should be drawn centered horizontally.
-	# Vertically: The 'center' is the middle of the flat tile.
-	# The image includes the thickness going DOWN.
-	# So we roughly want to align the top part of the image with the center.
-	# Let's try centering it at (center.x, center.y + offset).
-	
-	# A standard iso tile 96x48 (diamond) plus thickness of say 32px. Total H = 80.
-	# The center of the diamond is at y=24 (relative to top of image).
-	# grid_to_screen returns that point.
-	# So we draw the image at:
-	# x = center.x - (texture.width / 2)
-	# y = center.y - (texture.height / 2) ... wait.
-	# If relative y=24 is the center.
-	# draw_pos.y = center.y - 24.
-	
-	# Let's assume the "optical center" of the top surface is roughly 25-30% from the top.
-	# For now, let's center it and shift up by 1/4 height to account for thickness below.
-	
-	var tex_w = texture.get_width()
-	var tex_h = texture.get_height()
-	
-	var offset_y = -tex_h * 0.3 # Shift up to align 3D block's top face with the grid center
-	
-	var pos = center - Vector2(tex_w/2.0, tex_h/2.0)
-	pos.y += offset_y
-	
+	var tex_size = texture.get_size()
+	var pos = center - tex_size * 0.5
 	draw_texture(texture, pos)
 
 func draw_tile(col, row, fill_color, stroke_color, width=1.0):
@@ -163,4 +125,50 @@ func draw_tile(col, row, fill_color, stroke_color, width=1.0):
 		var pts = Array(poly)
 		pts.append(poly[0])
 		draw_polyline(PackedVector2Array(pts), stroke_color, stroke_width)
+
+func draw_obstacle_tile(col, row) -> void:
+	var base_color = Color(0.3, 0.3, 0.35, 1.0)
+	var stroke_color = Color(0.2, 0.2, 0.25, 1.0)
+	draw_tile(col, row, base_color, stroke_color, 1.0)
+	draw_obstacle_relief(col, row, base_color)
+
+func draw_obstacle_relief(col, row, base_color: Color) -> void:
+	var poly = Iso.get_tile_polygon(col, row)
+	var min_x = INF
+	var max_x = -INF
+	var min_y = INF
+	var max_y = -INF
+	for p in poly:
+		min_x = min(min_x, p.x)
+		max_x = max(max_x, p.x)
+		min_y = min(min_y, p.y)
+		max_y = max(max_y, p.y)
+	
+	var width = max_x - min_x
+	var height = max_y - min_y
+	if width <= 0.0 or height <= 0.0:
+		return
+	
+	var scale = max(Iso.get_tile_scale(), 0.75)
+	var inset = 4.0 * scale
+	var max_inset = min(width, height) * 0.35
+	inset = clamp(inset, 2.0, max_inset)
+	
+	var inner = PackedVector2Array([
+		Vector2(min_x + inset, min_y + inset),
+		Vector2(max_x - inset, min_y + inset),
+		Vector2(max_x - inset, max_y - inset),
+		Vector2(min_x + inset, max_y - inset)
+	])
+	
+	var top_face = base_color.lightened(0.15)
+	var highlight = base_color.lightened(0.35)
+	var shadow = base_color.darkened(0.35)
+	var edge_width = 2.0 * scale
+	
+	draw_colored_polygon(inner, top_face)
+	draw_line(Vector2(min_x, min_y), Vector2(max_x, min_y), highlight, edge_width)
+	draw_line(Vector2(min_x, min_y), Vector2(min_x, max_y), highlight, edge_width)
+	draw_line(Vector2(min_x, max_y), Vector2(max_x, max_y), shadow, edge_width)
+	draw_line(Vector2(max_x, min_y), Vector2(max_x, max_y), shadow, edge_width)
 

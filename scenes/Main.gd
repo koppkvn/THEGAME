@@ -70,6 +70,7 @@ const BASE_HUD_EDGE_PADDING = 8.0
 const BOARD_PADDING = 12.0
 const MIN_BOARD_SCALE = 0.6
 const MAX_BOARD_SCALE = 2.0
+const BOARD_TILT_Y_SCALE = 0.85
 
 var ui_scale: float = 1.0
 var is_portrait: bool = false
@@ -475,7 +476,8 @@ func _get_board_rect(safe_rect: Rect2, top_bar_height: float, bottom_bar_height:
 	return Rect2(pos, size)
 
 func _update_board_scale(board_rect: Rect2) -> void:
-	var base_size = Iso.get_board_size(Data.BOARD.rows, Data.BOARD.cols, Iso.BASE_TILE_W, Iso.BASE_TILE_H)
+	Iso.set_tilt_y_scale(BOARD_TILT_Y_SCALE)
+	var base_size = Iso.get_base_board_size(Data.BOARD.rows, Data.BOARD.cols)
 	if base_size.x <= 0.0 or base_size.y <= 0.0:
 		return
 	var scale = min(board_rect.size.x / base_size.x, board_rect.size.y / base_size.y)
