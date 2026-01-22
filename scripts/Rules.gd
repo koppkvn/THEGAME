@@ -428,7 +428,9 @@ static func apply_action(state: Dictionary, action: Dictionary) -> Dictionary:
 		# Check cooldown
 		if me.cooldowns.get(spell_id, 0) > 0: return state
 		
-		# Check casts per turn
+		# Check casts per turn (initialize if missing for backwards compatibility)
+		if not me.has("casts_this_turn"):
+			me["casts_this_turn"] = {}
 		var casts_this_turn = me.casts_this_turn.get(spell_id, 0)
 		var max_casts = spell.get("casts_per_turn", 1)
 		if casts_this_turn >= max_casts: return state
@@ -494,6 +496,9 @@ static func apply_action(state: Dictionary, action: Dictionary) -> Dictionary:
 			"EXPONENTIAL_ARROW":
 				var hit_unit = get_unit_at(next, target.x, target.y)
 				if hit_unit:
+					# Initialize exponential_stage if missing
+					if not me.has("exponential_stage"):
+						me["exponential_stage"] = 1
 					var stage = me.exponential_stage
 					var stage_dmg = spell.stage_damage[stage]
 					var dmg = roll_damage(stage_dmg.min, stage_dmg.max)
@@ -635,6 +640,12 @@ static func handle_turn_end(state):
 	var next_player = "P2" if current == "P1" else "P1"
 	var current_unit = state.units[current]
 	
+	# Initialize missing fields for backwards compatibility
+	if not current_unit.has("casts_this_turn"):
+		current_unit["casts_this_turn"] = {}
+	if not current_unit.has("exponential_stage"):
+		current_unit["exponential_stage"] = 1
+	
 	# Check Exponential Arrow reset - if it was available but not cast, reset to Stage 1
 	var exp_spell = Data.get_spell("EXPONENTIAL_ARROW")
 	var exp_cooldown = current_unit.cooldowns.get("EXPONENTIAL_ARROW", 0)
@@ -658,8 +669,8 @@ static func handle_turn_end(state):
 	
 	var p_unit = state.units[next_player]
 	
-	# Reset casts_this_turn for new turn
-	p_unit.casts_this_turn = {}
+	# Reset casts_this_turn for new turn (initialize if missing)
+	p_unit["casts_this_turn"] = {}
 	
 	# Apply MP reduction from Immobilizing Arrow
 	if has_status(p_unit, "mp_reduction"):
@@ -733,7 +744,9 @@ static func get_legal_targets(state: Dictionary, pid: String, spell_id: String) 
 	# Check cooldown
 	if me.cooldowns.get(spell_id, 0) > 0: return []
 	
-	# Check casts per turn
+	# Check casts per turn (initialize if missing for backwards compatibility)
+	if not me.has("casts_this_turn"):
+		me["casts_this_turn"] = {}
 	var casts_this_turn = me.casts_this_turn.get(spell_id, 0)
 	var max_casts = spell.get("casts_per_turn", 1)
 	if casts_this_turn >= max_casts: return []
