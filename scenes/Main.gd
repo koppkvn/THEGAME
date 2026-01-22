@@ -71,9 +71,12 @@ const BOARD_PADDING = 12.0
 const MIN_BOARD_SCALE = 0.6
 const MAX_BOARD_SCALE = 2.0
 const BOARD_TILT_Y_SCALE = 0.85
+const BASE_LOG_FONT_SIZE = 14
+const BASE_TOOLTIP_FONT_SIZE = 14
 
 var ui_scale: float = 1.0
 var ui_metrics_scale: float = 1.0
+var ui_text_scale: float = 1.0
 var is_portrait: bool = false
 var safe_area_rect: Rect2 = Rect2()
 var window_safe_size: Vector2 = Vector2.ZERO
@@ -99,6 +102,9 @@ const SERVER_URL = "wss://thegame-production.up.railway.app"
 
 
 func _ready():
+	if OS.has_feature("mobile") or OS.has_feature("web"):
+		# Prevent duplicate touch + mouse events on mobile/web.
+		Input.set_emulate_mouse_from_touch(false)
 	# Connect Signals
 	end_turn_btn.pressed.connect(_on_end_turn_pressed)
 	get_viewport().size_changed.connect(_on_viewport_resized)
@@ -448,18 +454,30 @@ func _get_ui_metrics_boost(min_side: float) -> float:
 		return 1.1
 	return 1.0
 
+func _get_compact_text_boost(min_side: float) -> float:
+	if not _is_compact_layout(min_side):
+		return 1.0
+	if min_side <= 600.0:
+		return 1.15
+	if min_side <= 800.0:
+		return 1.1
+	return 1.05
+
 func _is_compact_layout(min_side: float) -> bool:
 	return is_portrait or min_side <= 900.0
 
 func _get_spell_button_size(columns: int) -> Vector2:
 	var scale = ui_metrics_scale
-	if not _is_compact_layout(min(window_safe_size.x, window_safe_size.y)):
+	var min_side = min(window_safe_size.x, window_safe_size.y)
+	if not _is_compact_layout(min_side):
 		return BASE_SPELL_BTN_SIZE * scale
 	var padding = BASE_HUD_EDGE_PADDING * scale
 	var separation = int(BASE_TOPBAR_GAP * scale)
 	var available_width = max(0.0, safe_area_rect.size.x - padding * 2.0 - separation * max(columns - 1, 0))
 	var width = available_width / max(columns, 1)
-	var height = max(BASE_SPELL_BTN_SIZE.y * scale, width * 0.6)
+	var text_height = float(BASE_SPELL_FONT_SIZE) * ui_text_scale
+	var min_height = text_height * 1.6
+	var height = max(min_height, width * 0.5)
 	return Vector2(width, height)
 
 func _get_end_turn_button_size() -> Vector2:
@@ -468,16 +486,18 @@ func _get_end_turn_button_size() -> Vector2:
 	if _is_compact_layout(min(window_safe_size.x, window_safe_size.y)):
 		var padding = BASE_HUD_EDGE_PADDING * scale
 		size.x = max(size.x, safe_area_rect.size.x - padding * 2.0)
-		size.y = max(size.y, 64.0 * scale)
+		var min_height = float(BASE_END_TURN_FONT_SIZE) * ui_text_scale * 1.8
+		size.y = max(size.y, max(64.0 * scale, min_height))
 	return size
 
-func _update_ui_scale(window_safe_size: Vector2) -> void:
-	var min_side = max(1.0, min(window_safe_size.x, window_safe_size.y))
+func _update_ui_scale(safe_canvas_size: Vector2) -> void:
+	var min_side = max(1.0, min(safe_canvas_size.x, safe_canvas_size.y))
 	var physical_scale = clamp(UI_BASE_MIN_SIDE / min_side, UI_SCALE_MIN, UI_SCALE_MAX)
-	ui_scale = physical_scale / _get_canvas_scale()
-	is_portrait = window_safe_size.y >= window_safe_size.x
+	ui_scale = physical_scale
+	is_portrait = safe_canvas_size.y >= safe_canvas_size.x
 	ui_metrics_scale = min(ui_scale * _get_ui_metrics_boost(min_side), 2.6)
-	self.window_safe_size = window_safe_size
+	ui_text_scale = ui_metrics_scale * _get_compact_text_boost(min_side)
+	self.window_safe_size = safe_canvas_size
 
 func _apply_safe_area_offsets(viewport_rect: Rect2, safe_rect: Rect2) -> void:
 	hud.offset_left = safe_rect.position.x
@@ -487,47 +507,52 @@ func _apply_safe_area_offsets(viewport_rect: Rect2, safe_rect: Rect2) -> void:
 
 func _apply_ui_metrics() -> void:
 	var scale = ui_metrics_scale
+	var text_scale = ui_text_scale
 	var edge_pad = BASE_HUD_EDGE_PADDING * scale
-	var top_bar_height = BASE_TOPBAR_HEIGHT * scale
+	var top_bar_height = BASE_TOPBAR_HEIGHT * text_scale
 	top_bar.add_theme_constant_override("separation", int(BASE_TOPBAR_GAP * scale))
 	top_bar.offset_top = edge_pad
 	top_bar.offset_bottom = edge_pad + top_bar_height
 	
-	turn_label.add_theme_font_size_override("font_size", int(BASE_TOPBAR_FONT_SIZE * scale))
-	p1_status.add_theme_font_size_override("font_size", int(BASE_TOPBAR_FONT_SIZE * scale))
-	p2_status.add_theme_font_size_override("font_size", int(BASE_TOPBAR_FONT_SIZE * scale))
+	turn_label.add_theme_font_size_override("font_size", int(BASE_TOPBAR_FONT_SIZE * text_scale))
+	p1_status.add_theme_font_size_override("font_size", int(BASE_TOPBAR_FONT_SIZE * text_scale))
+	p2_status.add_theme_font_size_override("font_size", int(BASE_TOPBAR_FONT_SIZE * text_scale))
 	
-	p1_name.add_theme_font_size_override("font_size", int(BASE_HP_NAME_FONT_SIZE * scale))
-	p2_name.add_theme_font_size_override("font_size", int(BASE_HP_NAME_FONT_SIZE * scale))
-	p1_hp_label.add_theme_font_size_override("font_size", int(BASE_HP_LABEL_FONT_SIZE * scale))
-	p2_hp_label.add_theme_font_size_override("font_size", int(BASE_HP_LABEL_FONT_SIZE * scale))
+	p1_name.add_theme_font_size_override("font_size", int(BASE_HP_NAME_FONT_SIZE * text_scale))
+	p2_name.add_theme_font_size_override("font_size", int(BASE_HP_NAME_FONT_SIZE * text_scale))
+	p1_hp_label.add_theme_font_size_override("font_size", int(BASE_HP_LABEL_FONT_SIZE * text_scale))
+	p2_hp_label.add_theme_font_size_override("font_size", int(BASE_HP_LABEL_FONT_SIZE * text_scale))
 	
-	p1_hp_bar.custom_minimum_size = BASE_HP_BAR_SIZE * scale
-	p2_hp_bar.custom_minimum_size = BASE_HP_BAR_SIZE * scale
+	p1_hp_bar.custom_minimum_size = BASE_HP_BAR_SIZE * text_scale
+	p2_hp_bar.custom_minimum_size = BASE_HP_BAR_SIZE * text_scale
 	
-	p1_hp_display.offset_left = 20.0 * scale
-	p1_hp_display.offset_top = 20.0 * scale
-	p1_hp_display.offset_right = 200.0 * scale
-	p1_hp_display.offset_bottom = 80.0 * scale
+	p1_hp_display.offset_left = 20.0 * text_scale
+	p1_hp_display.offset_top = 20.0 * text_scale
+	p1_hp_display.offset_right = 220.0 * text_scale
+	p1_hp_display.offset_bottom = 90.0 * text_scale
 	
-	p2_hp_display.offset_left = -200.0 * scale
-	p2_hp_display.offset_top = 20.0 * scale
-	p2_hp_display.offset_right = -20.0 * scale
-	p2_hp_display.offset_bottom = 80.0 * scale
+	p2_hp_display.offset_left = -220.0 * text_scale
+	p2_hp_display.offset_top = 20.0 * text_scale
+	p2_hp_display.offset_right = -20.0 * text_scale
+	p2_hp_display.offset_bottom = 90.0 * text_scale
 	
-	timer_label.add_theme_font_size_override("font_size", int(BASE_TIMER_FONT_SIZE * scale))
-	timer_label.offset_left = -130.0 * scale
-	timer_label.offset_top = -50.0 * scale
-	timer_label.offset_right = -20.0 * scale
-	timer_label.offset_bottom = -15.0 * scale
+	timer_label.add_theme_font_size_override("font_size", int(BASE_TIMER_FONT_SIZE * text_scale))
+	timer_label.offset_left = -130.0 * text_scale
+	timer_label.offset_top = -55.0 * text_scale
+	timer_label.offset_right = -20.0 * text_scale
+	timer_label.offset_bottom = -15.0 * text_scale
 	
-	ap_label.add_theme_font_size_override("font_size", int(BASE_AP_FONT_SIZE * scale))
+	ap_label.add_theme_font_size_override("font_size", int(BASE_AP_FONT_SIZE * text_scale))
 	bottom_bar.add_theme_constant_override("separation", int(BASE_TOPBAR_GAP * scale))
 	spell_container.add_theme_constant_override("h_separation", int(BASE_TOPBAR_GAP * scale))
 	spell_container.add_theme_constant_override("v_separation", int(BASE_TOPBAR_GAP * scale))
 	
-	end_turn_btn.add_theme_font_size_override("font_size", int(BASE_END_TURN_FONT_SIZE * scale))
+	end_turn_btn.add_theme_font_size_override("font_size", int(BASE_END_TURN_FONT_SIZE * text_scale))
 	end_turn_btn.custom_minimum_size = _get_end_turn_button_size()
+	
+	log_panel.add_theme_font_size_override("normal_font_size", int(BASE_LOG_FONT_SIZE * text_scale))
+	if spell_tooltip_label:
+		spell_tooltip_label.add_theme_font_size_override("normal_font_size", int(BASE_TOOLTIP_FONT_SIZE * text_scale))
 
 func _get_spell_columns(window_safe_size: Vector2) -> int:
 	var min_side = min(window_safe_size.x, window_safe_size.y)
@@ -539,12 +564,14 @@ func _get_spell_columns(window_safe_size: Vector2) -> int:
 
 func _estimate_bottom_bar_height(spell_count: int, columns: int) -> float:
 	var scale = ui_metrics_scale
+	var text_scale = ui_text_scale
 	var separation = int(BASE_TOPBAR_GAP * scale)
-	var ap_height = max(ap_label.get_combined_minimum_size().y, BASE_AP_FONT_SIZE * scale)
+	var ap_height = int(BASE_AP_FONT_SIZE * text_scale) + int(6 * scale)
 	var end_turn_height = max(end_turn_btn.custom_minimum_size.y, BASE_END_TURN_SIZE.y * scale)
 	var button_height = _get_spell_button_size(columns).y
-	var label_height = int(BASE_SPELL_LABEL_FONT_SIZE * scale) + int(8 * scale)
-	var row_height = button_height + label_height
+	var label_height = int(BASE_SPELL_LABEL_FONT_SIZE * text_scale)
+	var label_spacing = int(6 * scale)
+	var row_height = button_height + label_spacing + label_height
 	var rows = max(1, int(ceil(float(spell_count) / float(max(columns, 1)))))
 	var spells_height = rows * row_height + max(0, rows - 1) * separation
 	return ap_height + separation + spells_height + separation + end_turn_height
@@ -572,22 +599,20 @@ func _get_spell_count_for_layout() -> int:
 
 func apply_responsive_layout(spell_count: int) -> void:
 	var viewport_rect = get_viewport_rect()
-	var window_safe = _get_window_safe_area()
-	_update_ui_scale(window_safe.size)
-	
 	safe_area_rect = _get_safe_area_rect()
+	_update_ui_scale(safe_area_rect.size)
 	_apply_safe_area_offsets(viewport_rect, safe_area_rect)
 	_apply_ui_metrics()
 	
-	var columns = _get_spell_columns(window_safe.size)
+	var columns = _get_spell_columns(safe_area_rect.size)
 	spell_container.columns = columns
 	
 	var bottom_bar_height = _estimate_bottom_bar_height(spell_count, columns)
 	bottom_bar.offset_top = -bottom_bar_height
 	bottom_bar.offset_bottom = 0.0
 	
-	var top_bar_height = top_bar.offset_bottom - top_bar.offset_top
-	var board_rect = _get_board_rect(safe_area_rect, top_bar_height, bottom_bar_height)
+	var top_overlay_height = max(top_bar.offset_bottom, p1_hp_display.offset_bottom, p2_hp_display.offset_bottom)
+	var board_rect = _get_board_rect(safe_area_rect, top_overlay_height, bottom_bar_height)
 	_update_board_scale(board_rect)
 	
 	board.queue_redraw()
@@ -661,8 +686,8 @@ func update_ui():
 	# Get spells dynamically from character class
 	var spell_list = Data.get_character_spells(char_id)
 	var button_size = _get_spell_button_size(spell_container.columns)
-	var spell_font_size = int(BASE_SPELL_FONT_SIZE * ui_metrics_scale)
-	var cost_font_size = int(BASE_SPELL_LABEL_FONT_SIZE * ui_metrics_scale)
+	var spell_font_size = int(BASE_SPELL_FONT_SIZE * ui_text_scale)
+	var cost_font_size = int(BASE_SPELL_LABEL_FONT_SIZE * ui_text_scale)
 	var label_spacing = int(6 * ui_metrics_scale)
 	
 	for spell_id in spell_list:

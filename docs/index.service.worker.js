@@ -4,7 +4,7 @@
 // Incrementing CACHE_VERSION will kick off the install event and force
 // previously cached resources to be updated from the network.
 /** @type {string} */
-const CACHE_VERSION = '1769112511|1258596727';
+const CACHE_VERSION = '1769114097|2844202075';
 /** @type {string} */
 const CACHE_PREFIX = 'Iso Tactics-sw-cache-';
 const CACHE_NAME = CACHE_PREFIX + CACHE_VERSION;
