@@ -353,11 +353,40 @@ func _input(event):
 func _screen_to_canvas(pos: Vector2) -> Vector2:
 	return get_viewport().get_canvas_transform().affine_inverse() * pos
 
+func _is_ui_hit(screen_pos: Vector2) -> bool:
+	var canvas_pos = _screen_to_canvas(screen_pos)
+	if _control_contains_point(bottom_bar, canvas_pos):
+		return true
+	if _control_contains_point(top_bar, canvas_pos):
+		return true
+	if _control_contains_point(log_panel, canvas_pos):
+		return true
+	if _control_contains_point(p1_hp_display, canvas_pos):
+		return true
+	if _control_contains_point(p2_hp_display, canvas_pos):
+		return true
+	if _control_contains_point(timer_label, canvas_pos):
+		return true
+	if lobby_panel and _control_contains_point(lobby_panel, canvas_pos):
+		return true
+	if game_over_panel and _control_contains_point(game_over_panel, canvas_pos):
+		return true
+	if spell_tooltip and spell_tooltip.visible and _control_contains_point(spell_tooltip, canvas_pos):
+		return true
+	return false
+
+func _control_contains_point(control: Control, point: Vector2) -> bool:
+	if control == null or not control.is_visible_in_tree():
+		return false
+	return control.get_global_rect().has_point(point)
+
 func _get_grid_from_screen_pos(pos: Vector2) -> Vector2i:
 	var canvas_pos = _screen_to_canvas(pos)
 	return Iso.pixel_to_grid(canvas_pos.x, canvas_pos.y)
 
 func _handle_pointer_press(screen_pos: Vector2, allow_deselect_outside: bool = true) -> void:
+	if _is_ui_hit(screen_pos):
+		return
 	var grid = _get_grid_from_screen_pos(screen_pos)
 	if Rules.in_bounds(grid.x, grid.y):
 		hovered_tile = grid
