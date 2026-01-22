@@ -834,7 +834,9 @@ func update_ui():
 			btn.disabled = true
 		
 		# Check casts per turn limit
-		var casts_this_turn = unit.casts_this_turn.get(spell_id, 0) if unit.has("casts_this_turn") else 0
+		var casts_this_turn = 0
+		if unit.has("casts_this_turn"):
+			casts_this_turn = unit.casts_this_turn.get(spell_id, 0)
 		var max_casts = spell.get("casts_per_turn", 1)
 		if casts_this_turn >= max_casts:
 			btn.modulate = Color(0.5, 0.3, 0.5)

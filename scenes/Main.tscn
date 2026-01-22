@@ -77,7 +77,7 @@ size_flags_horizontal = 4
 theme_override_colors/font_color = Color(0.2, 0.95, 1, 1)
 theme_override_font_sizes/font_size = 20
 horizontal_alignment = 1
-text = "⚡ AP: 50 / 50"
+text = "⚡ AP: 10 / 10"
 
 [node name="SpellsContainer" type="GridContainer" parent="CanvasLayer/HUD/BottomBar"]
 layout_mode = 2
@@ -128,7 +128,7 @@ show_percentage = false
 
 [node name="P1HPLabel" type="Label" parent="CanvasLayer/HUD/P1HPDisplay"]
 layout_mode = 2
-text = "10 / 10"
+text = "10000 / 10000"
 
 [node name="P2HPDisplay" type="VBoxContainer" parent="CanvasLayer/HUD"]
 layout_mode = 1
@@ -157,6 +157,6 @@ show_percentage = false
 [node name="P2HPLabel" type="Label" parent="CanvasLayer/HUD/P2HPDisplay"]
 layout_mode = 2
 horizontal_alignment = 2
-text = "10 / 10"
+text = "10000 / 10000"
 
 [node name="DamagePopups" type="Node2D" parent="."]
