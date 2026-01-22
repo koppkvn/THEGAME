@@ -120,6 +120,8 @@ var game_started: bool = false
 
 # Server URL - change this when deploying
 const SERVER_URL = "wss://thegame-production.up.railway.app"
+const CONNECT_TIMEOUT_MS = 12000
+const CONNECT_POLL_INTERVAL = 0.1
 
 
 func _ready():
@@ -233,19 +235,30 @@ func _on_play_offline():
 	call_deferred("update_all")
 
 func connect_to_server():
+	if socket.get_ready_state() == WebSocketPeer.STATE_OPEN:
+		connected = true
+		return
+	if socket.get_ready_state() != WebSocketPeer.STATE_CLOSED:
+		socket.close()
+	socket = WebSocketPeer.new()
+	connected = false
 	var err = socket.connect_to_url(SERVER_URL)
 	if err != OK:
 		status_label.text = "Failed to connect! Is server running?"
 		return
 	
 	# Wait for connection
-	for i in range(20):  # 2 second timeout
+	var start_ms = Time.get_ticks_msec()
+	while Time.get_ticks_msec() - start_ms < CONNECT_TIMEOUT_MS:
 		socket.poll()
-		if socket.get_ready_state() == WebSocketPeer.STATE_OPEN:
+		var state = socket.get_ready_state()
+		if state == WebSocketPeer.STATE_OPEN:
 			connected = true
 			status_label.text = "Connected!"
 			return
-		await get_tree().create_timer(0.1).timeout
+		if state == WebSocketPeer.STATE_CLOSED:
+			break
+		await get_tree().create_timer(CONNECT_POLL_INTERVAL).timeout
 	
 	status_label.text = "Connection timeout. Check server."
 
