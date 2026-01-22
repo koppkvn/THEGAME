@@ -306,6 +306,14 @@ func _input(event):
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		if hovered_tile != null:
 			try_action_at(hovered_tile.x, hovered_tile.y)
+		elif selected_spell_id != null:
+			# Clicked outside the board while a spell is selected - deselect it
+			selected_spell_id = null
+			update_all()
+	
+	# Spacebar to end turn
+	if event is InputEventKey and event.pressed and event.keycode == KEY_SPACE:
+		_on_end_turn_pressed()
 
 func _on_viewport_resized():
 	# Recalculate origin
