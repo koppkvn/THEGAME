@@ -36,6 +36,7 @@ var lobby_join_label: Label
 var room_code_input: LineEdit
 var lobby_join_btn: Button
 var lobby_offline_btn: Button
+var lobby_char_btn: Button
 var status_label: Label
 
 # Game Over UI
@@ -52,6 +53,7 @@ var UnitScene = preload("res://scenes/Unit.gd")
 var game_state: Dictionary
 var selected_spell_id = null
 var hovered_tile = null
+var selected_character = "RANGER" # RANGER or MELEE
 var turn_time_remaining: float = 30.0
 const TURN_DURATION: float = 30.0
 
@@ -163,7 +165,15 @@ func show_lobby():
 	lobby_title.text = "TACTICAL DUEL - ONLINE PVP"
 	lobby_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	lobby_title.add_theme_font_size_override("font_size", BASE_LOBBY_TITLE_FONT_SIZE)
+	lobby_title.add_theme_font_size_override("font_size", BASE_LOBBY_TITLE_FONT_SIZE)
 	lobby_vbox.add_child(lobby_title)
+	
+	# Character Selector
+	lobby_char_btn = Button.new()
+	lobby_char_btn.text = "Class: RANGER (Anti-Gravity)"
+	lobby_char_btn.custom_minimum_size = BASE_LOBBY_BUTTON_SIZE
+	lobby_char_btn.pressed.connect(_on_char_toggle)
+	lobby_vbox.add_child(lobby_char_btn)
 	
 	lobby_create_btn = Button.new()
 	lobby_create_btn.text = "Create Room"
@@ -214,6 +224,14 @@ func _on_create_room():
 		socket.send_text(JSON.stringify({"type": "CREATE_ROOM"}))
 		status_label.text = "Creating room..."
 
+func _on_char_toggle():
+	if selected_character == "RANGER":
+		selected_character = "MELEE"
+		lobby_char_btn.text = "Class: MELEE (Brawler)"
+	else:
+		selected_character = "RANGER"
+		lobby_char_btn.text = "Class: RANGER (Anti-Gravity)"
+
 func _on_join_room():
 	var code = room_code_input.text.strip_edges().to_upper()
 	if code.length() < 4:
@@ -231,7 +249,9 @@ func _on_play_offline():
 	lobby_panel.queue_free()
 	game_over_panel = null
 	$CanvasLayer/HUD.visible = true
-	game_state = Data.create_initial_state()
+	$CanvasLayer/HUD.visible = true
+	# In offline mode, both players use the selected character for testing
+	game_state = Data.create_initial_state(selected_character, "RANGER") # P2 defaults to Ranger dummy
 	call_deferred("update_all")
 
 func connect_to_server():
@@ -702,7 +722,10 @@ func _update_board_scale(board_rect: Rect2) -> void:
 	Iso.compute_origin_in_rect(board_rect, Data.BOARD.rows, Data.BOARD.cols)
 
 func _get_spell_count_for_layout() -> int:
-	return Data.get_character_spells("RANGER").size()
+	if not game_state: return 6
+	var pid = game_state.turn.currentPlayerId
+	var char_id = game_state.units[pid].get("character_class", "RANGER")
+	return Data.get_character_spells(char_id).size()
 
 func apply_responsive_layout(spell_count: int) -> void:
 	var viewport_rect = get_viewport_rect()
@@ -786,9 +809,8 @@ func update_ui():
 		c.queue_free()
 	
 	var pid = game_state.turn.currentPlayerId
-	# Both players use Ranger class for now
-	var char_id = "RANGER"
 	var unit = game_state.units[pid]
+	var char_id = unit.get("character_class", "RANGER")
 	
 	# Get spells dynamically from character class
 	var spell_list = Data.get_character_spells(char_id)

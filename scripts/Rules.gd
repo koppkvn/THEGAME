@@ -175,6 +175,11 @@ static func get_aoe_preview_tiles(state: Dictionary, caster_id: String, spell_id
 		"DISPLACEMENT_ARROW":
 			# Show cross pattern (1-3 tiles in each direction)
 			tiles = get_cross_tiles(target_x, target_y, spell.get("cross_range", 3))
+		"SHOCKWAVE_SLAM":
+			# Show 3x3 area around caster
+			for r in range(_caster.y - 1, _caster.y + 2):
+				for c in range(_caster.x - 1, _caster.x + 2):
+					tiles.append({"x": c, "y": r})
 		_:
 			# Single target
 			tiles = [{"x": target_x, "y": target_y}]
@@ -224,7 +229,7 @@ static func get_mp_reduction(unit: Dictionary) -> int:
 
 static func tick_status_effects(state: Dictionary, pid: String) -> void:
 	var unit = state.units[pid]
-	var effects_to_check = ["slow", "root", "revealed", "stun", "knocked_down", "damage_reduction", "movement_loss", "mp_reduction", "damage_boost"]
+	var effects_to_check = ["slow", "root", "revealed", "stun", "knocked_down", "damage_reduction", "movement_loss", "mp_reduction", "damage_boost", "gravity_lock", "was_displaced"]
 	for effect in effects_to_check:
 		if has_status(unit, effect):
 			unit.status[effect].turns -= 1
@@ -249,6 +254,12 @@ static func deal_damage_at(state: Dictionary, x: int, y: int, amount: int, sourc
 		if has_status(target, "damage_boost"):
 			var boost = get_damage_boost(target)
 			dmg = int(float(dmg) * (1.0 + boost))
+		# Apply target's damage reduction (they take less damage)
+		if has_status(target, "damage_reduction"):
+			var reduction = target.status.damage_reduction.percent
+			var reduced = int(float(dmg) * reduction)
+			dmg = max(1, dmg - reduced)
+			push_log(state, "Damage reduced by %d%% (-%d)" % [int(reduction * 100), reduced])
 		target.hp = max(0, target.hp - dmg)
 		if source != "":
 			push_log(state, "%s hit for %d (%s)" % [target.id, dmg, source])
@@ -263,6 +274,11 @@ static func deal_damage_at(state: Dictionary, x: int, y: int, amount: int, sourc
 # =============================================================================
 
 static func push_unit_from_with_collision(state: Dictionary, target: Dictionary, from_x: int, from_y: int, distance: int, collision_damage_per_tile: int) -> void:
+	# Check if target has gravity lock
+	if has_status(target, "gravity_lock"):
+		push_log(state, "%s cannot be pushed (Gravity Lock)!" % target.id)
+		return
+	
 	var dx = target.x - from_x
 	var dy = target.y - from_y
 	var push_dir_x = 0
@@ -314,6 +330,8 @@ static func push_unit_from_with_collision(state: Dictionary, target: Dictionary,
 	
 	if pushed > 0:
 		push_log(state, "%s pushed %d tiles" % [target.id, pushed])
+		# Mark as displaced for Crushing Strike bonus
+		apply_status(target, "was_displaced", {"turns": 1})
 	
 	# Apply collision damage for blocked tiles
 	if blocked_tiles > 0 and collision_damage_per_tile > 0:
@@ -374,6 +392,135 @@ static func push_unit_from_center(state: Dictionary, target: Dictionary, center_
 	
 	if pushed > 0:
 		push_log(state, "%s displaced %d tiles" % [target.id, pushed])
+		# Mark as displaced for Crushing Strike bonus
+		apply_status(target, "was_displaced", {"turns": 1})
+
+# =============================================================================
+# PULL SYSTEM - For Magnetic Pull
+# =============================================================================
+
+static func pull_unit_toward(state: Dictionary, target: Dictionary, toward_x: int, toward_y: int, distance: int) -> void:
+	# Check if target has gravity lock
+	if has_status(target, "gravity_lock"):
+		push_log(state, "%s cannot be pulled (Gravity Lock)!" % target.id)
+		return
+	
+	var dx = toward_x - target.x
+	var dy = toward_y - target.y
+	var pull_dir_x = 0
+	var pull_dir_y = 0
+	
+	# Determine pull direction (toward the caster)
+	if abs(dx) > abs(dy):
+		pull_dir_x = sign(dx)
+	elif abs(dy) > abs(dx):
+		pull_dir_y = sign(dy)
+	else:
+		if dx != 0:
+			pull_dir_x = sign(dx)
+		else:
+			pull_dir_y = sign(dy) if dy != 0 else 0
+	
+	var pulled = 0
+	
+	for i in range(distance):
+		var nx = target.x + pull_dir_x
+		var ny = target.y + pull_dir_y
+		
+		# Stop if out of bounds
+		if not in_bounds(nx, ny):
+			break
+		
+		# Stop at obstacles
+		if Data.is_obstacle(nx, ny):
+			break
+		
+		# Stop if we would pass another unit
+		var blocking_unit = get_unit_at(state, nx, ny)
+		if blocking_unit:
+			break
+		
+		# Move unit
+		target.x = nx
+		target.y = ny
+		pulled += 1
+	
+	if pulled > 0:
+		push_log(state, "%s pulled %d tiles" % [target.id, pulled])
+		# Mark as displaced for Crushing Strike bonus
+		apply_status(target, "was_displaced", {"turns": 1})
+
+# =============================================================================
+# PUSH WITH WALL DAMAGE - For Shockwave Slam
+# =============================================================================
+
+static func push_unit_with_wall_damage(state: Dictionary, target: Dictionary, from_x: int, from_y: int, distance: int, wall_damage: int) -> void:
+	# Check if target has gravity lock
+	if has_status(target, "gravity_lock"):
+		push_log(state, "%s cannot be pushed (Gravity Lock)!" % target.id)
+		return
+	
+	var dx = target.x - from_x
+	var dy = target.y - from_y
+	var push_dir_x = 0
+	var push_dir_y = 0
+	
+	# Determine push direction (away from caster)
+	if abs(dx) >= abs(dy):
+		push_dir_x = sign(dx) if dx != 0 else 0
+		push_dir_y = sign(dy) if dx == 0 else 0
+	else:
+		push_dir_y = sign(dy) if dy != 0 else 0
+		push_dir_x = sign(dx) if dy == 0 else 0
+	
+	# Handle diagonal adjacency
+	if push_dir_x == 0 and push_dir_y == 0:
+		push_dir_x = sign(dx) if dx != 0 else 1
+		push_dir_y = sign(dy) if dy != 0 else 0
+	
+	var pushed = 0
+	var hit_wall = false
+	
+	for i in range(distance):
+		var nx = target.x + push_dir_x
+		var ny = target.y + push_dir_y
+		
+		# Check bounds
+		if not in_bounds(nx, ny):
+			if Data.BOARD.ring_out:
+				target.hp = 0
+				push_log(state, "Ring Out!")
+				check_win(state)
+				return
+			else:
+				hit_wall = true
+				break
+		
+		# Check wall collision
+		if Data.is_obstacle(nx, ny):
+			hit_wall = true
+			break
+		
+		# Check unit collision
+		var blocking_unit = get_unit_at(state, nx, ny)
+		if blocking_unit:
+			break
+		
+		# Move unit
+		target.x = nx
+		target.y = ny
+		pushed += 1
+	
+	if pushed > 0:
+		push_log(state, "%s pushed %d tiles" % [target.id, pushed])
+		# Mark as displaced for Crushing Strike bonus
+		apply_status(target, "was_displaced", {"turns": 1})
+	
+	# Apply wall collision damage
+	if hit_wall and wall_damage > 0:
+		target.hp = max(0, target.hp - wall_damage)
+		push_log(state, "%s slammed into wall! +%d damage" % [target.id, wall_damage])
+		check_win(state)
 
 # =============================================================================
 # MAIN ACTION HANDLER
@@ -618,6 +765,183 @@ static func apply_action(state: Dictionary, action: Dictionary) -> Dictionary:
 					check_win(next)
 				
 				return next
+			
+			# =============================================================
+			# MELEE CHARACTER SPELLS
+			# =============================================================
+			
+			# ---------------------------------------------------------
+			# 1) CRUSHING STRIKE - Core DPS, punishes displacement
+			# ---------------------------------------------------------
+			"CRUSHING_STRIKE":
+				var hit_unit = get_unit_at(next, target.x, target.y)
+				if hit_unit:
+					var dmg = roll_damage(spell.damage_min, spell.damage_max)
+					# Bonus damage if target was displaced last turn
+					if has_status(hit_unit, "was_displaced"):
+						dmg += spell.displacement_bonus
+						push_log(next, "Crushing Strike bonus! (+%d for displacement)" % spell.displacement_bonus)
+					deal_damage_at(next, target.x, target.y, dmg, "Crushing Strike", me)
+				else:
+					push_log(next, "No target at location")
+				return next
+			
+			# ---------------------------------------------------------
+			# 2) MAGNETIC PULL - Counter to knockback/zoning
+			# ---------------------------------------------------------
+			"MAGNETIC_PULL":
+				var hit_unit = get_unit_at(next, target.x, target.y)
+				if hit_unit:
+					# Check if target has gravity lock
+					if has_status(hit_unit, "gravity_lock"):
+						push_log(next, "%s cannot be pulled (Gravity Lock)!" % hit_unit.id)
+						var dmg = roll_damage(spell.damage_min, spell.damage_max)
+						deal_damage_at(next, target.x, target.y, dmg, "Magnetic Pull", me)
+						return next
+					
+					var dmg = roll_damage(spell.damage_min, spell.damage_max)
+					deal_damage_at(next, target.x, target.y, dmg, "Magnetic Pull", me)
+					
+					if hit_unit.hp > 0:
+						# Pull target toward caster
+						pull_unit_toward(next, hit_unit, me.x, me.y, spell.pull_distance)
+						
+						# Apply MP reduction if now adjacent
+						var dist_after = abs(hit_unit.x - me.x) + abs(hit_unit.y - me.y)
+						if dist_after == 1:
+							apply_status(hit_unit, "mp_reduction", {"turns": 1, "amount": spell.adjacent_mp_reduction})
+							push_log(next, "%s loses %d MP for 1 turn (adjacent)!" % [hit_unit.id, spell.adjacent_mp_reduction])
+				else:
+					push_log(next, "No target at location")
+				return next
+			
+			# ---------------------------------------------------------
+			# 3) GRAVITY LOCK - Hard counter to displacement and mobility
+			# ---------------------------------------------------------
+			"GRAVITY_LOCK":
+				var hit_unit = get_unit_at(next, target.x, target.y)
+				if hit_unit:
+					var dmg = roll_damage(spell.damage_min, spell.damage_max)
+					deal_damage_at(next, target.x, target.y, dmg, "Gravity Lock", me)
+					
+					if hit_unit.hp > 0:
+						apply_status(hit_unit, "gravity_lock", {"turns": 1})
+						push_log(next, "%s is Gravity Locked! (Cannot be pushed/pulled, no MP gain)" % hit_unit.id)
+				else:
+					push_log(next, "No target at location")
+				return next
+			
+			# ---------------------------------------------------------
+			# 4) KINETIC DASH - Gap closer with tempo reward
+			# ---------------------------------------------------------
+			"KINETIC_DASH":
+				# This is a movement spell - validate straight line
+				var dx = target.x - me.x
+				var dy = target.y - me.y
+				
+				# Must be in a straight line
+				if dx != 0 and dy != 0:
+					push_log(next, "Kinetic Dash must be in a straight line!")
+					# Refund AP and cast
+					next.turn.apRemaining += ap_cost
+					me.casts_this_turn[spell_id] = casts_this_turn
+					return state
+				
+				# Must be within range
+				var dash_dist = abs(dx) + abs(dy)
+				if dash_dist < 1 or dash_dist > spell.range:
+					push_log(next, "Invalid dash distance!")
+					next.turn.apRemaining += ap_cost
+					me.casts_this_turn[spell_id] = casts_this_turn
+					return state
+				
+				# Check path is clear
+				var dir_x = sign(dx) if dx != 0 else 0
+				var dir_y = sign(dy) if dy != 0 else 0
+				var path_clear = true
+				
+				for i in range(1, dash_dist + 1):
+					var check_x = me.x + dir_x * i
+					var check_y = me.y + dir_y * i
+					if Data.is_obstacle(check_x, check_y) or get_unit_at(next, check_x, check_y):
+						path_clear = false
+						break
+				
+				if not path_clear:
+					push_log(next, "Path blocked!")
+					next.turn.apRemaining += ap_cost
+					me.casts_this_turn[spell_id] = casts_this_turn
+					return state
+				
+				# Execute dash
+				me.x = target.x
+				me.y = target.y
+				push_log(next, "%s dashes to (%d,%d)" % [pid, target.x, target.y])
+				
+				# Check if adjacent to enemy for AP bonus
+				var adjacent_to_enemy = false
+				var adj_dirs = [Vector2i(0, 1), Vector2i(0, -1), Vector2i(1, 0), Vector2i(-1, 0)]
+				for adj_d in adj_dirs:
+					var adj_x = me.x + adj_d.x
+					var adj_y = me.y + adj_d.y
+					var adj_unit = get_unit_at(next, adj_x, adj_y)
+					if adj_unit and adj_unit.id != me.id:
+						adjacent_to_enemy = true
+						break
+				
+				if adjacent_to_enemy:
+					next.turn.apRemaining += spell.adjacent_ap_bonus
+					push_log(next, "%s gains +%d AP (adjacent to enemy)!" % [pid, spell.adjacent_ap_bonus])
+				
+				return next
+			
+			# ---------------------------------------------------------
+			# 5) SHOCKWAVE SLAM - Anti-surround AoE with push
+			# ---------------------------------------------------------
+			"SHOCKWAVE_SLAM":
+				# This is an AoE centered on caster, target is self position
+				var units_hit = []
+				var adj_dirs = [Vector2i(0, 1), Vector2i(0, -1), Vector2i(1, 0), Vector2i(-1, 0),
+							   Vector2i(1, 1), Vector2i(1, -1), Vector2i(-1, 1), Vector2i(-1, -1)]
+				
+				for slam_d in adj_dirs:
+					var adj_x = me.x + slam_d.x
+					var adj_y = me.y + slam_d.y
+					var adj_unit = get_unit_at(next, adj_x, adj_y)
+					if adj_unit and adj_unit.id != me.id:
+						units_hit.append(adj_unit)
+				
+				if units_hit.size() == 0:
+					push_log(next, "No adjacent enemies to slam!")
+					return next
+				
+				for unit in units_hit:
+					var dmg = roll_damage(spell.damage_min, spell.damage_max)
+					deal_damage_at(next, unit.x, unit.y, dmg, "Shockwave Slam", me)
+					
+					if unit.hp > 0:
+						# Push away from caster with wall collision damage
+						# Note: push_unit_with_wall_damage handles gravity lock check internally
+						push_unit_with_wall_damage(next, unit, me.x, me.y, spell.push_distance, spell.wall_collision_damage)
+				
+				return next
+			
+			# ---------------------------------------------------------
+			# 6) ADRENALINE SURGE - Survivability + commitment reward
+			# ---------------------------------------------------------
+			"ADRENALINE_SURGE":
+				# Grant MP bonus
+				next.turn.movesRemaining += spell.mp_bonus
+				push_log(next, "%s gains +%d MP!" % [pid, spell.mp_bonus])
+				
+				# Apply damage reduction
+				apply_status(me, "damage_reduction", {"turns": 1, "percent": spell.damage_reduction_percent})
+				push_log(next, "%s gains 20%% damage reduction until next turn!" % pid)
+				
+				# Set pending heal check for end of turn
+				me.status.adrenaline_surge_pending = {"heal": spell.adjacent_heal}
+				
+				return next
 		
 		return next
 		
@@ -660,6 +984,18 @@ static func handle_turn_end(state):
 		if current_unit.exponential_stage > 1:
 			push_log(state, "%s: Exponential Arrow reset to Stage 1 (not cast when available)" % current)
 			current_unit.exponential_stage = 1
+	
+	# Check Adrenaline Surge end-of-turn heal
+	if has_status(current_unit, "adrenaline_surge_pending"):
+		var other_id = "P2" if current == "P1" else "P1"
+		var enemy = state.units[other_id]
+		var dist = abs(current_unit.x - enemy.x) + abs(current_unit.y - enemy.y)
+		if dist == 1:
+			var heal_amount = current_unit.status.adrenaline_surge_pending.heal
+			current_unit.hp = min(Data.MELEE_HP, current_unit.hp + heal_amount)
+			push_log(state, "%s restores %d HP (adjacent commitment)!" % [current, heal_amount])
+		# Clear the pending status regardless
+		current_unit.status.adrenaline_surge_pending = null
 	
 	# Tick status effects at END of current player's turn
 	tick_status_effects(state, current)
@@ -759,7 +1095,34 @@ static func get_legal_targets(state: Dictionary, pid: String, spell_id: String) 
 	var max_range = spell.get("range", 1)
 	var requires_los = spell.get("requires_los", true)
 	var requires_empty = spell.get("requires_empty_tile", false)
+	var is_dash = spell.get("dash", false)
 	
+	# Handle dash/movement spells (Kinetic Dash) - require straight line
+	if is_dash:
+		var directions = [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]
+		for dir in directions:
+			for dist in range(min_range, max_range + 1):
+				var tx = me.x + dir.x * dist
+				var ty = me.y + dir.y * dist
+				
+				if not in_bounds(tx, ty): break
+				if Data.is_obstacle(tx, ty): break
+				if get_unit_at(state, tx, ty): break
+				
+				# Check entire path is clear
+				var path_clear = true
+				for i in range(1, dist):
+					var px = me.x + dir.x * i
+					var py = me.y + dir.y * i
+					if Data.is_obstacle(px, py) or get_unit_at(state, px, py):
+						path_clear = false
+						break
+				
+				if path_clear:
+					targets.append({"x": tx, "y": ty})
+		return targets
+	
+	# Standard targeting logic
 	for r in range(Data.BOARD.rows):
 		for c in range(Data.BOARD.cols):
 			var d = abs(me.x - c) + abs(me.y - r)
@@ -776,3 +1139,4 @@ static func get_legal_targets(state: Dictionary, pid: String, spell_id: String) 
 				targets.append({"x": c, "y": r})
 	
 	return targets
+

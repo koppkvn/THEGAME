@@ -132,36 +132,171 @@ const ANTIGRAVITY_SPELLS = {
 	}
 }
 
+# =============================================================================
+# SPELLS - Melee Character
+# =============================================================================
+# Slightly higher HP (12000) and MP (5) to compensate for melee exposure
+
+const MELEE_SPELLS = {
+	# 1) Crushing Strike - Core DPS, punishes displacement
+	"CRUSHING_STRIKE": {
+		"id": "CRUSHING_STRIKE",
+		"label": "Crushing Strike",
+		"desc": "Deal 300-500 damage. +200 bonus if target was displaced last turn. Melee only.",
+		"type": "ATTACK",
+		"range": 1,
+		"min_range": 1,
+		"damage_min": 300,
+		"damage_max": 500,
+		"ap_cost": 3,
+		"casts_per_turn": 2,
+		"cooldown": 0,
+		"requires_los": true,
+		"melee": true,
+		"displacement_bonus": 200
+	},
+	
+	# 2) Magnetic Pull - Counter to knockback/zoning
+	"MAGNETIC_PULL": {
+		"id": "MAGNETIC_PULL",
+		"label": "Magnetic Pull",
+		"desc": "Deal 150-250 damage. Pull target 3 tiles toward you. If adjacent after: -1 MP for 1 turn.",
+		"type": "ATTACK",
+		"range": 6,
+		"min_range": 2,
+		"damage_min": 150,
+		"damage_max": 250,
+		"ap_cost": 3,
+		"casts_per_turn": 1,
+		"cooldown": 0,
+		"requires_los": true,
+		"pull_distance": 3,
+		"adjacent_mp_reduction": 1
+	},
+	
+	# 3) Gravity Lock - Hard counter to displacement and mobility
+	"GRAVITY_LOCK": {
+		"id": "GRAVITY_LOCK",
+		"label": "Gravity Lock",
+		"desc": "Deal 200-300 damage. Apply Gravity Lock for 1 turn: cannot be pushed/pulled, cannot gain MP.",
+		"type": "ATTACK",
+		"range": 1,
+		"min_range": 1,
+		"damage_min": 200,
+		"damage_max": 300,
+		"ap_cost": 4,
+		"casts_per_turn": 1,
+		"cooldown": 2,
+		"requires_los": true,
+		"melee": true,
+		"applies_gravity_lock": true
+	},
+	
+	# 4) Kinetic Dash - Gap closer with tempo reward
+	"KINETIC_DASH": {
+		"id": "KINETIC_DASH",
+		"label": "Kinetic Dash",
+		"desc": "Dash 1-4 tiles in a straight line. If you end adjacent to an enemy: +1 AP this turn.",
+		"type": "MOVEMENT",
+		"range": 4,
+		"min_range": 1,
+		"damage_min": 0,
+		"damage_max": 0,
+		"ap_cost": 2,
+		"casts_per_turn": 1,
+		"cooldown": 0,
+		"requires_los": false,
+		"dash": true,
+		"adjacent_ap_bonus": 1
+	},
+	
+	# 5) Shockwave Slam - Anti-surround AoE with push
+	"SHOCKWAVE_SLAM": {
+		"id": "SHOCKWAVE_SLAM",
+		"label": "Shockwave Slam",
+		"desc": "Deal 400-600 damage to all adjacent enemies. Push 1 tile. +150 wall collision damage.",
+		"type": "ATTACK",
+		"range": 1,
+		"min_range": 0,  # Targets self/area around caster
+		"damage_min": 400,
+		"damage_max": 600,
+		"ap_cost": 5,
+		"casts_per_turn": 1,
+		"cooldown": 2,
+		"requires_los": false,
+		"melee": true,
+		"aoe_radius": 1,
+		"push_distance": 1,
+		"wall_collision_damage": 150
+	},
+	
+	# 6) Adrenaline Surge - Survivability + commitment reward
+	"ADRENALINE_SURGE": {
+		"id": "ADRENALINE_SURGE",
+		"label": "Adrenaline Surge",
+		"desc": "Gain +2 MP this turn, 20% damage reduction until next turn. If ending adjacent to enemy: restore 300 HP.",
+		"type": "BUFF",
+		"range": 0,
+		"min_range": 0,
+		"damage_min": 0,
+		"damage_max": 0,
+		"ap_cost": 1,
+		"casts_per_turn": 1,
+		"cooldown": 3,
+		"requires_los": false,
+		"self_cast": true,
+		"mp_bonus": 2,
+		"damage_reduction_percent": 0.20,
+		"adjacent_heal": 300
+	}
+}
+
 # Combined spells dictionary
 static func get_all_spells() -> Dictionary:
-	return ANTIGRAVITY_SPELLS.duplicate()
+	var all = ANTIGRAVITY_SPELLS.duplicate()
+	for key in MELEE_SPELLS:
+		all[key] = MELEE_SPELLS[key]
+	return all
 
 # Helper to get a spell by ID
 static func get_spell(spell_id: String) -> Dictionary:
 	if ANTIGRAVITY_SPELLS.has(spell_id):
 		return ANTIGRAVITY_SPELLS[spell_id]
+	if MELEE_SPELLS.has(spell_id):
+		return MELEE_SPELLS[spell_id]
 	return {}
 
-# Get all spell IDs
-static func get_character_spells(_character_id: String) -> Array:
+# Get all spell IDs for a character
+static func get_character_spells(character_id: String) -> Array:
+	if character_id == "MELEE":
+		return MELEE_SPELLS.keys()
 	return ANTIGRAVITY_SPELLS.keys()
 
-# Constants for game balance - Anti-Gravity spec
+# Constants for game balance - Anti-Gravity spec (Ranged)
 const MAX_HP = 10000
 const MAX_AP = 10
 const MAX_MP = 4  # Movement points
 
-static func create_initial_state() -> Dictionary:
+# Constants for Melee character (higher HP and MP)
+const MELEE_HP = 12000
+const MELEE_AP = 10
+const MELEE_MP = 5
+
+static func create_initial_state(p1_class: String = "RANGER", p2_class: String = "RANGER") -> Dictionary:
+	var p1_hp = MAX_HP if p1_class == "RANGER" else MELEE_HP
+	var p2_hp = MAX_HP if p2_class == "RANGER" else MELEE_HP
+	
 	return {
 		"turn": {
 			"currentPlayerId": "P1",
 			"number": 1,
-			"apRemaining": MAX_AP,
+			"apRemaining": MAX_AP, # AP is reset at turn start anyway
 			"movesRemaining": MAX_MP
 		},
 		"units": {
 			"P1": {
-				"id": "P1", "x": 2, "y": 5, "hp": MAX_HP,
+				"id": "P1", "x": 2, "y": 5, "hp": p1_hp,
+				"character_class": p1_class,
 				"status": {
 					"guard": null,
 					"burn": null,
@@ -174,7 +309,10 @@ static func create_initial_state() -> Dictionary:
 					"damage_reduction": null,
 					"movement_loss": null,
 					"mp_reduction": null,      # { "turns": int, "amount": int }
-					"damage_boost": null       # { "turns": int, "percent": float }
+					"damage_boost": null,      # { "turns": int, "percent": float }
+					"gravity_lock": null,      # { "turns": int } - cannot be pushed/pulled, no MP gain
+					"was_displaced": null,     # { "turns": int } - was pushed/pulled last turn
+					"adrenaline_surge_pending": null  # { "heal": int } - check at end of turn
 				},
 				"cooldowns": {},
 				"casts_this_turn": {},         # Track casts per turn per spell
@@ -182,7 +320,8 @@ static func create_initial_state() -> Dictionary:
 				"exponential_available_last_turn": false  # Track if spell was available
 			},
 			"P2": {
-				"id": "P2", "x": 7, "y": 4, "hp": MAX_HP,
+				"id": "P2", "x": 7, "y": 4, "hp": p2_hp,
+				"character_class": p2_class,
 				"status": {
 					"guard": null,
 					"burn": null,
@@ -195,7 +334,10 @@ static func create_initial_state() -> Dictionary:
 					"damage_reduction": null,
 					"movement_loss": null,
 					"mp_reduction": null,
-					"damage_boost": null
+					"damage_boost": null,
+					"gravity_lock": null,
+					"was_displaced": null,
+					"adrenaline_surge_pending": null
 				},
 				"cooldowns": {},
 				"casts_this_turn": {},
