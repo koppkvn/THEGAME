@@ -174,22 +174,22 @@ const MELEE_SPELLS = {
 		"adjacent_mp_reduction": 1
 	},
 	
-	# 3) Gravity Lock - Hard counter to displacement and mobility
+	# 3) Gravity Lock - Remove all MP and deal damage
 	"GRAVITY_LOCK": {
 		"id": "GRAVITY_LOCK",
 		"label": "Gravity Lock",
-		"desc": "Deal 200-300 damage. Apply Gravity Lock for 1 turn: cannot be pushed/pulled, cannot gain MP.",
+		"desc": "Deal 300-500 damage. Remove ALL MP from target for this turn.",
 		"type": "ATTACK",
 		"range": 1,
 		"min_range": 1,
-		"damage_min": 200,
-		"damage_max": 300,
+		"damage_min": 300,
+		"damage_max": 500,
 		"ap_cost": 4,
 		"casts_per_turn": 1,
 		"cooldown": 2,
 		"requires_los": true,
 		"melee": true,
-		"applies_gravity_lock": true
+		"removes_all_mp": true
 	},
 	
 	# 4) Kinetic Dash - Gap closer with tempo reward
@@ -230,11 +230,11 @@ const MELEE_SPELLS = {
 		"wall_collision_damage": 150
 	},
 	
-	# 6) Adrenaline Surge - Survivability + commitment reward
+	# 6) Adrenaline Surge - Random effect: +1 MP or heal 300 HP (50% each)
 	"ADRENALINE_SURGE": {
 		"id": "ADRENALINE_SURGE",
 		"label": "Adrenaline Surge",
-		"desc": "Gain +2 MP this turn, 20% damage reduction until next turn. If ending adjacent to enemy: restore 300 HP.",
+		"desc": "50% chance: Gain +1 MP this turn. 50% chance: Restore 300 HP.",
 		"type": "BUFF",
 		"range": 0,
 		"min_range": 0,
@@ -245,9 +245,8 @@ const MELEE_SPELLS = {
 		"cooldown": 3,
 		"requires_los": false,
 		"self_cast": true,
-		"mp_bonus": 2,
-		"damage_reduction_percent": 0.20,
-		"adjacent_heal": 300
+		"random_mp_bonus": 1,
+		"random_heal": 300
 	}
 }
 

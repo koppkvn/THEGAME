@@ -816,7 +816,7 @@ static func apply_action(state: Dictionary, action: Dictionary) -> Dictionary:
 				return next
 			
 			# ---------------------------------------------------------
-			# 3) GRAVITY LOCK - Hard counter to displacement and mobility
+			# 3) GRAVITY LOCK - Deal damage and remove all MP
 			# ---------------------------------------------------------
 			"GRAVITY_LOCK":
 				var hit_unit = get_unit_at(next, target.x, target.y)
@@ -825,8 +825,11 @@ static func apply_action(state: Dictionary, action: Dictionary) -> Dictionary:
 					deal_damage_at(next, target.x, target.y, dmg, "Gravity Lock", me)
 					
 					if hit_unit.hp > 0:
-						apply_status(hit_unit, "gravity_lock", {"turns": 1})
-						push_log(next, "%s is Gravity Locked! (Cannot be pushed/pulled, no MP gain)" % hit_unit.id)
+						# Remove all remaining MP from opponent
+						var mp_removed = next.turn.movesRemaining if hit_unit.id == enemy.id else 0
+						# If target is the opponent currently not moving, set massive MP reduction for their next turn
+						apply_status(hit_unit, "mp_reduction", {"turns": 1, "amount": 99})
+						push_log(next, "%s loses ALL MP! (Gravity Lock)" % hit_unit.id)
 				else:
 					push_log(next, "No target at location")
 				return next
@@ -927,19 +930,24 @@ static func apply_action(state: Dictionary, action: Dictionary) -> Dictionary:
 				return next
 			
 			# ---------------------------------------------------------
-			# 6) ADRENALINE SURGE - Survivability + commitment reward
+			# 6) ADRENALINE SURGE - 50% chance: +1 MP or heal 300 HP
 			# ---------------------------------------------------------
 			"ADRENALINE_SURGE":
-				# Grant MP bonus
-				next.turn.movesRemaining += spell.mp_bonus
-				push_log(next, "%s gains +%d MP!" % [pid, spell.mp_bonus])
+				# 50% roll to determine effect
+				var roll = randf()
 				
-				# Apply damage reduction
-				apply_status(me, "damage_reduction", {"turns": 1, "percent": spell.damage_reduction_percent})
-				push_log(next, "%s gains 20%% damage reduction until next turn!" % pid)
-				
-				# Set pending heal check for end of turn
-				me.status.adrenaline_surge_pending = {"heal": spell.adjacent_heal}
+				if roll < 0.5:
+					# Grant +1 MP
+					next.turn.movesRemaining += spell.random_mp_bonus
+					push_log(next, "%s gains +%d MP! (Adrenaline Surge)" % [pid, spell.random_mp_bonus])
+				else:
+					# Heal 300 HP
+					var max_hp = Data.MELEE_HP if me.get("character_class", "RANGER") == "MELEE" else Data.MAX_HP
+					var heal_amount = spell.random_heal
+					var old_hp = me.hp
+					me.hp = min(max_hp, me.hp + heal_amount)
+					var actual_heal = me.hp - old_hp
+					push_log(next, "%s restores %d HP! (Adrenaline Surge)" % [pid, actual_heal])
 				
 				return next
 		
@@ -1099,6 +1107,11 @@ static func get_legal_targets(state: Dictionary, pid: String, spell_id: String) 
 	var requires_los = spell.get("requires_los", true)
 	var requires_empty = spell.get("requires_empty_tile", false)
 	var is_dash = spell.get("dash", false)
+	var is_self_cast = spell.get("self_cast", false)
+	
+	# Handle self-cast spells (Adrenaline Surge) - only target self
+	if is_self_cast:
+		return [{"x": me.x, "y": me.y}]
 	
 	# Handle dash/movement spells (Kinetic Dash) - require straight line
 	if is_dash:
