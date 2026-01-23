@@ -745,7 +745,7 @@ func apply_responsive_layout(spell_count: int) -> void:
 	var board_rect = _get_board_rect(safe_area_rect, top_overlay_height, bottom_bar_height)
 	_update_board_scale(board_rect)
 	
-	board.queue_redraw()
+	board.refresh_layout()
 
 func _on_viewport_resized():
 	apply_responsive_layout(_get_spell_count_for_layout())
