@@ -359,6 +359,9 @@ func handle_server_message(text: String):
 			var old_state = game_state
 			var old_p1_hp = game_state.units.P1.hp if game_state else 10
 			var old_p2_hp = game_state.units.P2.hp if game_state else 10
+			# Store old status effects to detect new effects on targets
+			var old_p1_status = game_state.units.P1.status.duplicate(true) if game_state else {}
+			var old_p2_status = game_state.units.P2.status.duplicate(true) if game_state else {}
 			var old_player = game_state.turn.currentPlayerId if game_state else ""
 			
 			game_state = msg.state
@@ -376,14 +379,22 @@ func handle_server_message(text: String):
 						if path.size() > 0:
 							pending_move_paths[pid] = path
 			
-			# Check for damage and spawn popups
+			# Check for HP changes and status effects applied to targets
 			var new_p1_hp = game_state.units.P1.hp
 			var new_p2_hp = game_state.units.P2.hp
 			
-			if new_p1_hp < old_p1_hp:
-				spawn_damage_popup("P1", old_p1_hp - new_p1_hp)
-			if new_p2_hp < old_p2_hp:
-				spawn_damage_popup("P2", old_p2_hp - new_p2_hp)
+			var p1_hp_change = old_p1_hp - new_p1_hp
+			var p2_hp_change = old_p2_hp - new_p2_hp
+			
+			# Detect newly applied status effects on each player
+			var p1_effects = _detect_new_effects(old_p1_status, game_state.units.P1.status)
+			var p2_effects = _detect_new_effects(old_p2_status, game_state.units.P2.status)
+			
+			# Spawn popups for targets with changes
+			if p1_hp_change != 0 or p1_effects.size() > 0:
+				spawn_stat_popup("P1", p1_hp_change, p1_effects)
+			if p2_hp_change != 0 or p2_effects.size() > 0:
+				spawn_stat_popup("P2", p2_hp_change, p2_effects)
 			
 			# Reset timer if turn changed
 			if game_state.turn.currentPlayerId != old_player:
@@ -1098,6 +1109,9 @@ func apply_action(action):
 	var old_player = game_state.turn.currentPlayerId
 	var old_p1_hp = game_state.units.P1.hp
 	var old_p2_hp = game_state.units.P2.hp
+	# Store old status effects to detect new effects on targets
+	var old_p1_status = game_state.units.P1.status.duplicate(true)
+	var old_p2_status = game_state.units.P2.status.duplicate(true)
 	
 	# Store path for move actions before applying (so we know the path to animate)
 	if action.type == "MOVE":
@@ -1113,16 +1127,22 @@ func apply_action(action):
 	
 	game_state = Rules.apply_action(game_state, action)
 	
-	# Check for damage and spawn popups
+	# Check for HP changes and status effects applied to targets
 	var new_p1_hp = game_state.units.P1.hp
 	var new_p2_hp = game_state.units.P2.hp
 	
-	if new_p1_hp < old_p1_hp:
-		var damage = old_p1_hp - new_p1_hp
-		spawn_damage_popup("P1", damage)
-	if new_p2_hp < old_p2_hp:
-		var damage = old_p2_hp - new_p2_hp
-		spawn_damage_popup("P2", damage)
+	var p1_hp_change = old_p1_hp - new_p1_hp
+	var p2_hp_change = old_p2_hp - new_p2_hp
+	
+	# Detect newly applied status effects on each player
+	var p1_effects = _detect_new_effects(old_p1_status, game_state.units.P1.status)
+	var p2_effects = _detect_new_effects(old_p2_status, game_state.units.P2.status)
+	
+	# Spawn popups for targets with changes
+	if p1_hp_change != 0 or p1_effects.size() > 0:
+		spawn_stat_popup("P1", p1_hp_change, p1_effects)
+	if p2_hp_change != 0 or p2_effects.size() > 0:
+		spawn_stat_popup("P2", p2_hp_change, p2_effects)
 	
 	# Reset timer if turn changed
 	if game_state.turn.currentPlayerId != old_player:
@@ -1131,20 +1151,89 @@ func apply_action(action):
 	
 	update_all()
 
-func spawn_damage_popup(pid: String, damage: int):
+# Detect newly applied status effects by comparing old and new status dictionaries
+func _detect_new_effects(old_status: Dictionary, new_status: Dictionary) -> Array:
+	var effects = []
+	
+	# Check for MP reduction (from Immobilizing Arrow, Magnetic Pull)
+	if new_status.get("mp_reduction") and not old_status.get("mp_reduction"):
+		var amount = new_status.mp_reduction.get("amount", 0)
+		if amount > 0:
+			effects.append({"type": "mp", "amount": -amount})
+	
+	# Check for damage boost applied to enemy (from Thief Arrow)
+	if new_status.get("damage_boost") and not old_status.get("damage_boost"):
+		var percent = new_status.damage_boost.get("percent", 0)
+		if percent > 0:
+			effects.append({"type": "buff", "text": "+%d%% DMG" % int(percent * 100)})
+	
+	# Check for gravity lock (from Gravity Lock spell)
+	if new_status.get("gravity_lock") and not old_status.get("gravity_lock"):
+		effects.append({"type": "debuff", "text": "LOCKED"})
+	
+	# Check for was_displaced (from push/pull effects)
+	if new_status.get("was_displaced") and not old_status.get("was_displaced"):
+		effects.append({"type": "debuff", "text": "PUSHED"})
+	
+	return effects
+
+# Spawn stat change popups for HP damage and status effects applied to targets
+func spawn_stat_popup(pid: String, hp_change: int, effects: Array):
 	var unit_data = game_state.units[pid]
 	var screen_pos = Iso.grid_to_screen(unit_data.x, unit_data.y)
+	var base_pos = screen_pos - Vector2(20, 60)
 	
-	# Create damage label
-	var label = Label.new()
-	label.text = "-%d" % damage
-	label.add_theme_color_override("font_color", Color.RED)
-	label.add_theme_font_size_override("font_size", 28)
-	label.position = screen_pos - Vector2(20, 60)
-	label.z_index = 100
-	damage_popups.add_child(label)
+	# Track horizontal offset for multiple labels
+	var x_offset = 0
 	
-	# Animate: rise up and fade out
+	# HP change (red for damage, green for healing)
+	if hp_change != 0:
+		var hp_label = Label.new()
+		if hp_change > 0:
+			hp_label.text = "-%d" % hp_change
+			hp_label.add_theme_color_override("font_color", Color.RED)
+		else:
+			hp_label.text = "+%d" % (-hp_change)  # Healing
+			hp_label.add_theme_color_override("font_color", Color("#22c55e"))  # Green for heal
+		hp_label.add_theme_font_size_override("font_size", 28)
+		hp_label.position = base_pos + Vector2(x_offset, 0)
+		hp_label.z_index = 100
+		damage_popups.add_child(hp_label)
+		_animate_popup(hp_label)
+		x_offset += 65
+	
+	# Status effects applied to target
+	for effect in effects:
+		var label = Label.new()
+		
+		if effect.type == "mp":
+			# MP reduction (green, negative)
+			label.text = "%d MP" % effect.amount
+			label.add_theme_color_override("font_color", Color("#22c55e"))  # Green
+		elif effect.type == "ap":
+			# AP change (blue)
+			var sign_str = "+" if effect.amount > 0 else ""
+			label.text = "%s%d AP" % [sign_str, effect.amount]
+			label.add_theme_color_override("font_color", Color("#3b82f6"))  # Blue
+		elif effect.type == "buff":
+			# Buffs (yellow/gold)
+			label.text = effect.text
+			label.add_theme_color_override("font_color", Color.GOLD)
+		elif effect.type == "debuff":
+			# Debuffs (purple)
+			label.text = effect.text
+			label.add_theme_color_override("font_color", Color("#a855f7"))  # Purple
+		else:
+			continue
+		
+		label.add_theme_font_size_override("font_size", 20)
+		label.position = base_pos + Vector2(x_offset, 0)
+		label.z_index = 100
+		damage_popups.add_child(label)
+		_animate_popup(label)
+		x_offset += 70
+
+func _animate_popup(label: Label):
 	var tween = create_tween()
 	tween.set_parallel(true)
 	tween.tween_property(label, "position:y", label.position.y - 50, 1.0)
