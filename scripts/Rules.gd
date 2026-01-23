@@ -1139,4 +1139,3 @@ static func get_legal_targets(state: Dictionary, pid: String, spell_id: String) 
 				targets.append({"x": c, "y": r})
 	
 	return targets
-
