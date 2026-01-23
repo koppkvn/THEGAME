@@ -1004,7 +1004,10 @@ static func handle_turn_end(state):
 	state.turn.currentPlayerId = next_player
 	if next_player == "P1": state.turn.number += 1
 	state.turn.apRemaining = Data.MAX_AP
-	state.turn.movesRemaining = Data.MAX_MP
+	# Set MP based on character class
+	var next_unit = state.units[next_player]
+	var base_mp = Data.MELEE_MP if next_unit.get("character_class", "RANGER") == "MELEE" else Data.MAX_MP
+	state.turn.movesRemaining = base_mp
 	
 	var p_unit = state.units[next_player]
 	
@@ -1139,4 +1142,3 @@ static func get_legal_targets(state: Dictionary, pid: String, spell_id: String) 
 				targets.append({"x": c, "y": r})
 	
 	return targets
-

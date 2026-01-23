@@ -2,16 +2,12 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://dk2lffotwrsjj"
-path="res://.godot/imported/tile_stone.png-353be58bec250f886c4fe7118ed7ed42.ctex"
-metadata={
-"vram_texture": false
-}
+uid="uid://dnkpfwhah03bj"
+valid=false
 
 [deps]
 
-source_file="res://assets/tile_stone.png"
-dest_files=["res://.godot/imported/tile_stone.png-353be58bec250f886c4fe7118ed7ed42.ctex"]
+source_file="res://assets/characters/ranger.png"
 
 [params]
 

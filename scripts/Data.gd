@@ -280,18 +280,19 @@ const MAX_MP = 4  # Movement points
 # Constants for Melee character (higher HP and MP)
 const MELEE_HP = 12000
 const MELEE_AP = 10
-const MELEE_MP = 5
+const MELEE_MP = 3
 
 static func create_initial_state(p1_class: String = "RANGER", p2_class: String = "RANGER") -> Dictionary:
 	var p1_hp = MAX_HP if p1_class == "RANGER" else MELEE_HP
 	var p2_hp = MAX_HP if p2_class == "RANGER" else MELEE_HP
+	var p1_mp = MAX_MP if p1_class == "RANGER" else MELEE_MP
 	
 	return {
 		"turn": {
 			"currentPlayerId": "P1",
 			"number": 1,
 			"apRemaining": MAX_AP, # AP is reset at turn start anyway
-			"movesRemaining": MAX_MP
+			"movesRemaining": p1_mp
 		},
 		"units": {
 			"P1": {

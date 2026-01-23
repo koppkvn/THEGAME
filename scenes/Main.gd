@@ -788,10 +788,14 @@ func update_ui():
 	p2_status.text = "P2: %d %s" % [u2.hp, "🛡️" if u2.status.guard else ""]
 	
 	# HP Bars
+	var p1_max_hp = Data.MELEE_HP if u1.get("character_class", "RANGER") == "MELEE" else Data.MAX_HP
+	var p2_max_hp = Data.MELEE_HP if u2.get("character_class", "RANGER") == "MELEE" else Data.MAX_HP
+	p1_hp_bar.max_value = p1_max_hp
 	p1_hp_bar.value = u1.hp
-	p1_hp_label.text = "%d / %d" % [u1.hp, Data.MAX_HP]
+	p1_hp_label.text = "%d / %d" % [u1.hp, p1_max_hp]
+	p2_hp_bar.max_value = p2_max_hp
 	p2_hp_bar.value = u2.hp
-	p2_hp_label.text = "%d / %d" % [u2.hp, Data.MAX_HP]
+	p2_hp_label.text = "%d / %d" % [u2.hp, p2_max_hp]
 	
 	# Log
 	var log_text = ""
@@ -1103,6 +1107,10 @@ func apply_action(action):
 		if path.size() > 0:
 			pending_move_paths[pid] = path
 	
+	# Trigger spell visual effects BEFORE applying action
+	if action.type == "CAST":
+		play_spell_effect(action)
+	
 	game_state = Rules.apply_action(game_state, action)
 	
 	# Check for damage and spawn popups
@@ -1280,3 +1288,350 @@ func show_spell_tooltip(container: Control, desc: String):
 func hide_spell_tooltip():
 	if spell_tooltip:
 		spell_tooltip.visible = false
+
+# =============================================================================
+# SPELL VISUAL EFFECTS
+# =============================================================================
+
+func play_spell_effect(action: Dictionary) -> void:
+	var spell_id = action.spellId
+	var target = action.target
+	var pid = action.playerId
+	var caster = game_state.units[pid]
+	
+	var caster_pos = Iso.grid_to_screen(caster.x, caster.y)
+	var target_pos = Iso.grid_to_screen(target.x, target.y)
+	
+	# Get spell color based on type
+	var spell_color = get_spell_color(spell_id)
+	
+	match spell_id:
+		# === RANGER SPELLS ===
+		"KNOCKBACK_ARROW", "PIERCING_ARROW", "EXPONENTIAL_ARROW", "IMMOBILIZING_ARROW", "THIEF_ARROW":
+			spawn_arrow_effect(caster_pos, target_pos, spell_color)
+		
+		"DISPLACEMENT_ARROW":
+			spawn_arrow_effect(caster_pos, target_pos, Color.PURPLE)
+			# Delayed cross effect
+			await get_tree().create_timer(0.25).timeout
+			spawn_aoe_cross(target_pos, Color.PURPLE)
+		
+		# === MELEE SPELLS ===
+		"CRUSHING_STRIKE":
+			spawn_slash_effect(target_pos, Color.ORANGE)
+		
+		"MAGNETIC_PULL":
+			spawn_pull_effect(target_pos, caster_pos, Color.MAGENTA)
+		
+		"GRAVITY_LOCK":
+			spawn_lock_effect(target_pos, Color.DARK_VIOLET)
+		
+		"KINETIC_DASH":
+			spawn_dash_effect(caster_pos, target_pos, Color.CYAN)
+		
+		"SHOCKWAVE_SLAM":
+			spawn_shockwave_effect(caster_pos, Color.ORANGE)
+		
+		"ADRENALINE_SURGE":
+			spawn_buff_effect(caster_pos, Color.GREEN)
+
+func get_spell_color(spell_id: String) -> Color:
+	match spell_id:
+		"KNOCKBACK_ARROW": return Color.CYAN
+		"PIERCING_ARROW": return Color.RED
+		"EXPONENTIAL_ARROW": return Color.GOLD
+		"IMMOBILIZING_ARROW": return Color.DARK_BLUE
+		"THIEF_ARROW": return Color.PURPLE
+		"DISPLACEMENT_ARROW": return Color.MAGENTA
+		_: return Color.WHITE
+
+func spawn_arrow_effect(from: Vector2, to: Vector2, color: Color) -> void:
+	var arrow = Node2D.new()
+	arrow.position = from
+	arrow.z_index = 100
+	add_child(arrow)
+	
+	var trail_points = []
+	var target = to
+	var arrow_color = color
+	
+	# Simple script for the arrow
+	arrow.set_meta("target", target)
+	arrow.set_meta("color", arrow_color)
+	arrow.set_meta("trail", trail_points)
+	
+	arrow.draw.connect(func():
+		var t = arrow.get_meta("trail") as Array
+		var c = arrow.get_meta("color") as Color
+		
+		# Draw trail
+		if t.size() > 1:
+			for i in range(t.size() - 1):
+				var alpha = float(i) / t.size()
+				var local_from = t[i] - arrow.position
+				var local_to = t[i + 1] - arrow.position
+				var trail_color = c
+				trail_color.a = alpha * 0.7
+				arrow.draw_line(local_from, local_to, trail_color, 4.0 * alpha)
+		
+		# Draw arrow head
+		arrow.draw_circle(Vector2.ZERO, 8, c)
+		arrow.draw_circle(Vector2.ZERO, 5, c.lightened(0.5))
+	)
+	
+	# Animate
+	var duration = from.distance_to(to) / 1000.0
+	duration = clamp(duration, 0.1, 0.4)
+	
+	var tween = create_tween()
+	tween.tween_method(func(t: float):
+		var new_pos = from.lerp(to, t)
+		trail_points.append(arrow.position)
+		if trail_points.size() > 15:
+			trail_points.pop_front()
+		arrow.set_meta("trail", trail_points)
+		arrow.position = new_pos
+		arrow.queue_redraw()
+	, 0.0, 1.0, duration).set_ease(Tween.EASE_IN)
+	
+	tween.tween_callback(func():
+		spawn_impact_effect(to, color)
+		arrow.queue_free()
+	)
+
+func spawn_impact_effect(pos: Vector2, color: Color) -> void:
+	var impact = Node2D.new()
+	impact.position = pos
+	impact.z_index = 100
+	add_child(impact)
+	
+	var time = 0.0
+	var rings = [{"r": 5.0, "a": 1.0}, {"r": 5.0, "a": 1.0}, {"r": 5.0, "a": 1.0}]
+	var particles = []
+	
+	for i in range(10):
+		var angle = randf() * TAU
+		var speed = randf_range(80, 150)
+		particles.append({"pos": Vector2.ZERO, "vel": Vector2(cos(angle), sin(angle)) * speed, "a": 1.0})
+	
+	impact.set_meta("rings", rings)
+	impact.set_meta("particles", particles)
+	impact.set_meta("color", color)
+	
+	impact.draw.connect(func():
+		var r_arr = impact.get_meta("rings") as Array
+		var p_arr = impact.get_meta("particles") as Array
+		var c = impact.get_meta("color") as Color
+		
+		for ring in r_arr:
+			if ring.a > 0:
+				var ring_c = c
+				ring_c.a = ring.a
+				impact.draw_arc(Vector2.ZERO, ring.r, 0, TAU, 32, ring_c, 3)
+		
+		for p in p_arr:
+			if p.a > 0:
+				var p_c = c.lightened(0.3)
+				p_c.a = p.a
+				impact.draw_circle(p.pos, 4, p_c)
+	)
+	
+	var tween = create_tween()
+	tween.tween_method(func(t: float):
+		for i in range(rings.size()):
+			rings[i].r = 5 + t * 60 * (i + 1) * 0.5
+			rings[i].a = 1.0 - t
+		for p in particles:
+			p.pos += p.vel * 0.016
+			p.vel *= 0.95
+			p.a = 1.0 - t
+		impact.set_meta("rings", rings)
+		impact.set_meta("particles", particles)
+		impact.queue_redraw()
+	, 0.0, 1.0, 0.4)
+	tween.tween_callback(func(): impact.queue_free())
+
+func spawn_slash_effect(pos: Vector2, color: Color) -> void:
+	var slash = Node2D.new()
+	slash.position = pos + Vector2(0, -40)
+	slash.z_index = 100
+	add_child(slash)
+	
+	var angle = -PI/3
+	var length = 0.0
+	
+	slash.set_meta("angle", angle)
+	slash.set_meta("length", length)
+	slash.set_meta("color", color)
+	
+	slash.draw.connect(func():
+		var a = slash.get_meta("angle") as float
+		var l = slash.get_meta("length") as float
+		var c = slash.get_meta("color") as Color
+		
+		if l > 0:
+			var start = Vector2(cos(a), sin(a)) * -l * 0.5
+			var end = Vector2(cos(a), sin(a)) * l * 0.5
+			slash.draw_line(start, end, c, 8)
+			slash.draw_line(start, end, c.lightened(0.5), 4)
+	)
+	
+	var tween = create_tween()
+	tween.tween_method(func(t: float):
+		slash.set_meta("angle", -PI/3 + t * PI/1.5)
+		slash.set_meta("length", sin(t * PI) * 80)
+		slash.queue_redraw()
+	, 0.0, 1.0, 0.2)
+	tween.tween_callback(func(): slash.queue_free())
+
+func spawn_pull_effect(from: Vector2, to: Vector2, color: Color) -> void:
+	for i in range(8):
+		var line = Node2D.new()
+		var offset = Vector2(randf_range(-15, 15), randf_range(-15, 15))
+		line.position = from + offset
+		line.z_index = 100
+		line.modulate = color
+		add_child(line)
+		
+		line.draw.connect(func():
+			line.draw_circle(Vector2.ZERO, 5, Color.WHITE)
+		)
+		line.queue_redraw()
+		
+		var tween = create_tween()
+		tween.tween_property(line, "position", to + offset * 0.3, 0.3).set_delay(i * 0.03).set_ease(Tween.EASE_IN)
+		tween.parallel().tween_property(line, "modulate:a", 0.0, 0.3).set_delay(i * 0.03)
+		tween.tween_callback(func(): line.queue_free())
+
+func spawn_lock_effect(pos: Vector2, color: Color) -> void:
+	var lock = Node2D.new()
+	lock.position = pos + Vector2(0, -40)
+	lock.z_index = 100
+	add_child(lock)
+	
+	lock.set_meta("color", color)
+	lock.set_meta("size", 0.0)
+	
+	lock.draw.connect(func():
+		var c = lock.get_meta("color") as Color
+		var s = lock.get_meta("size") as float
+		# Draw chain links
+		for i in range(8):
+			var angle = (TAU / 8) * i
+			var r = 30 * s
+			lock.draw_circle(Vector2(cos(angle), sin(angle)) * r, 6, c)
+		# Center lock
+		lock.draw_rect(Rect2(-10 * s, -5 * s, 20 * s, 15 * s), c, true)
+		lock.draw_arc(Vector2.ZERO, 8 * s, PI, TAU, 16, c, 4)
+	)
+	
+	var tween = create_tween()
+	tween.tween_method(func(t: float):
+		lock.set_meta("size", t)
+		lock.queue_redraw()
+	, 0.0, 1.0, 0.3).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_BACK)
+	tween.tween_interval(0.3)
+	tween.tween_property(lock, "modulate:a", 0.0, 0.3)
+	tween.tween_callback(func(): lock.queue_free())
+
+func spawn_dash_effect(from: Vector2, to: Vector2, color: Color) -> void:
+	var dash = Node2D.new()
+	dash.position = from
+	dash.z_index = 100
+	add_child(dash)
+	
+	var dir = (to - from).normalized()
+	dash.rotation = dir.angle()
+	
+	dash.set_meta("color", color)
+	dash.set_meta("length", 0.0)
+	
+	dash.draw.connect(func():
+		var c = dash.get_meta("color") as Color
+		var l = dash.get_meta("length") as float
+		dash.draw_line(Vector2.ZERO, Vector2(l, 0), c, 6)
+		dash.draw_line(Vector2.ZERO, Vector2(l, 0), c.lightened(0.5), 3)
+	)
+	
+	var dist = from.distance_to(to)
+	var tween = create_tween()
+	tween.tween_method(func(t: float):
+		dash.set_meta("length", dist * t)
+		dash.position = from.lerp(to, t * 0.5)
+		dash.modulate.a = 1.0 - t * 0.5
+		dash.queue_redraw()
+	, 0.0, 1.0, 0.15)
+	tween.tween_property(dash, "modulate:a", 0.0, 0.1)
+	tween.tween_callback(func(): dash.queue_free())
+
+func spawn_shockwave_effect(pos: Vector2, color: Color) -> void:
+	var wave = Node2D.new()
+	wave.position = pos + Vector2(0, -20)
+	wave.z_index = 100
+	add_child(wave)
+	
+	wave.set_meta("color", color)
+	wave.set_meta("radius", 0.0)
+	
+	wave.draw.connect(func():
+		var c = wave.get_meta("color") as Color
+		var r = wave.get_meta("radius") as float
+		wave.draw_arc(Vector2.ZERO, r, 0, TAU, 32, c, 6)
+		wave.draw_arc(Vector2.ZERO, r * 0.7, 0, TAU, 32, c.lightened(0.3), 4)
+	)
+	
+	var tween = create_tween()
+	tween.tween_method(func(t: float):
+		wave.set_meta("radius", t * 80)
+		wave.modulate.a = 1.0 - t
+		wave.queue_redraw()
+	, 0.0, 1.0, 0.3).set_ease(Tween.EASE_OUT)
+	tween.tween_callback(func(): wave.queue_free())
+
+func spawn_buff_effect(pos: Vector2, color: Color) -> void:
+	for i in range(12):
+		var particle = Node2D.new()
+		var angle = (TAU / 12) * i
+		particle.position = pos + Vector2(cos(angle), sin(angle)) * 30
+		particle.z_index = 100
+		particle.modulate = color
+		add_child(particle)
+		
+		particle.draw.connect(func():
+			particle.draw_circle(Vector2.ZERO, 5, Color.WHITE)
+		)
+		particle.queue_redraw()
+		
+		var tween = create_tween()
+		var target = pos + Vector2(0, -60) + Vector2(cos(angle + PI), sin(angle + PI)) * 10
+		tween.tween_property(particle, "position", target, 0.5).set_delay(i * 0.03).set_ease(Tween.EASE_OUT)
+		tween.parallel().tween_property(particle, "modulate:a", 0.0, 0.5).set_delay(i * 0.03)
+		tween.tween_callback(func(): particle.queue_free())
+
+func spawn_aoe_cross(pos: Vector2, color: Color) -> void:
+	var cross = Node2D.new()
+	cross.position = pos
+	cross.z_index = 100
+	add_child(cross)
+	
+	cross.set_meta("color", color)
+	cross.set_meta("length", 0.0)
+	
+	cross.draw.connect(func():
+		var c = cross.get_meta("color") as Color
+		var l = cross.get_meta("length") as float
+		# Draw 4 lines extending from center
+		cross.draw_line(Vector2.ZERO, Vector2(l, 0), c, 4)
+		cross.draw_line(Vector2.ZERO, Vector2(-l, 0), c, 4)
+		cross.draw_line(Vector2.ZERO, Vector2(0, l), c, 4)
+		cross.draw_line(Vector2.ZERO, Vector2(0, -l), c, 4)
+	)
+	
+	var tween = create_tween()
+	tween.tween_method(func(t: float):
+		cross.set_meta("length", t * 100)
+		cross.modulate.a = 1.0 - t * 0.5
+		cross.queue_redraw()
+	, 0.0, 1.0, 0.3)
+	tween.tween_property(cross, "modulate:a", 0.0, 0.2)
+	tween.tween_callback(func(): cross.queue_free())
