@@ -57,6 +57,13 @@ var selected_character = "RANGER" # RANGER or MELEE
 var turn_time_remaining: float = 30.0
 const TURN_DURATION: float = 30.0
 
+const SPELL_ATLAS_PATHS = [
+	"res://assets/spells/ranger_spells.png",
+	"res://assets/spells/melee_spells.png",
+	"res://assets/spells/mage_spells.png"
+]
+var spell_atlases: Dictionary = {}
+
 # Responsive layout
 const UI_BASE_MIN_SIDE = 800.0
 const UI_SCALE_MIN = 1.0
@@ -90,6 +97,9 @@ const BASE_LOBBY_BUTTON_SIZE = Vector2(200, 40)
 const BASE_LOBBY_INPUT_SIZE = Vector2(200, 35)
 const BASE_LOBBY_VBOX_PADDING = 20.0
 const BASE_LOBBY_VBOX_SEPARATION = 15.0
+const LOBBY_MOBILE_BOOST = 1.2
+const HP_MOBILE_BOOST = 1.15
+const END_TURN_MOBILE_HEIGHT_BOOST = 1.12
 const TOUCH_MOUSE_DEDUP_MS = 240
 const TOUCH_MOUSE_DEDUP_DIST = 24.0
 
@@ -137,10 +147,43 @@ func _ready():
 	
 	# Create custom spell tooltip
 	create_spell_tooltip()
+	_load_spell_atlases()
 	
 	# Show lobby first
 	show_lobby()
 	call_deferred("apply_responsive_layout", 0)
+
+func _load_spell_atlases() -> void:
+	spell_atlases.clear()
+	for path in SPELL_ATLAS_PATHS:
+		var tex = _load_texture_from_path(path)
+		if tex:
+			spell_atlases[path] = tex
+		else:
+			push_warning("Failed to load spell atlas: " + path)
+
+func _load_texture_from_path(path: String) -> Texture2D:
+	var tex = load(path)
+	if tex:
+		return tex
+	if OS.has_feature("web"):
+		return null
+	var fa = FileAccess.open(path, FileAccess.READ)
+	if fa == null:
+		return null
+	var buffer = fa.get_buffer(fa.get_length())
+	var img = Image.new()
+	var magic = buffer.slice(0, 4).hex_encode()
+	var err = OK
+	if magic == "89504e47": # PNG
+		err = img.load_png_from_buffer(buffer)
+	elif magic.begins_with("ffd8ff"): # JPEG
+		err = img.load_jpg_from_buffer(buffer)
+	else:
+		err = img.load_from_buffer(buffer)
+	if err != OK:
+		return null
+	return ImageTexture.create_from_image(img)
 
 func show_lobby():
 	# Create lobby panel
@@ -601,11 +644,13 @@ func _get_spell_button_size(columns: int) -> Vector2:
 func _get_end_turn_button_size() -> Vector2:
 	var scale = ui_metrics_scale
 	var size = BASE_END_TURN_SIZE * scale
-	if _is_compact_layout(min(window_safe_size.x, window_safe_size.y)):
+	var min_side = min(window_safe_size.x, window_safe_size.y)
+	if _is_compact_layout(min_side):
 		var padding = BASE_HUD_EDGE_PADDING * scale
 		size.x = max(size.x, safe_area_rect.size.x - padding * 2.0)
 		var min_height = float(BASE_END_TURN_FONT_SIZE) * ui_text_scale * 1.8
-		size.y = max(size.y, max(64.0 * scale, min_height))
+		var base_min_height = max(64.0 * scale, min_height)
+		size.y = max(size.y, base_min_height * END_TURN_MOBILE_HEIGHT_BOOST)
 	return size
 
 func _update_ui_scale(safe_canvas_size: Vector2) -> void:
@@ -626,6 +671,10 @@ func _apply_safe_area_offsets(viewport_rect: Rect2, safe_rect: Rect2) -> void:
 func _apply_ui_metrics() -> void:
 	var scale = ui_metrics_scale
 	var text_scale = ui_text_scale
+	var min_side = min(window_safe_size.x, window_safe_size.y)
+	var hp_scale = text_scale
+	if _is_compact_layout(min_side):
+		hp_scale *= HP_MOBILE_BOOST
 	var edge_pad = BASE_HUD_EDGE_PADDING * scale
 	var top_bar_height = BASE_TOPBAR_HEIGHT * text_scale
 	top_bar.add_theme_constant_override("separation", int(BASE_TOPBAR_GAP * scale))
@@ -636,10 +685,10 @@ func _apply_ui_metrics() -> void:
 	p1_status.add_theme_font_size_override("font_size", int(BASE_TOPBAR_FONT_SIZE * text_scale))
 	p2_status.add_theme_font_size_override("font_size", int(BASE_TOPBAR_FONT_SIZE * text_scale))
 	
-	p1_name.add_theme_font_size_override("font_size", int(BASE_HP_NAME_FONT_SIZE * text_scale))
-	p2_name.add_theme_font_size_override("font_size", int(BASE_HP_NAME_FONT_SIZE * text_scale))
-	p1_hp_label.add_theme_font_size_override("font_size", int(BASE_HP_LABEL_FONT_SIZE * text_scale))
-	p2_hp_label.add_theme_font_size_override("font_size", int(BASE_HP_LABEL_FONT_SIZE * text_scale))
+	p1_name.add_theme_font_size_override("font_size", int(BASE_HP_NAME_FONT_SIZE * hp_scale))
+	p2_name.add_theme_font_size_override("font_size", int(BASE_HP_NAME_FONT_SIZE * hp_scale))
+	p1_hp_label.add_theme_font_size_override("font_size", int(BASE_HP_LABEL_FONT_SIZE * hp_scale))
+	p2_hp_label.add_theme_font_size_override("font_size", int(BASE_HP_LABEL_FONT_SIZE * hp_scale))
 	
 	# HP Bar Styling
 	var hp_bg = StyleBoxFlat.new()
@@ -667,16 +716,18 @@ func _apply_ui_metrics() -> void:
 	p1_hp_bar.add_theme_stylebox_override("fill", hp_fg)
 	p2_hp_bar.add_theme_stylebox_override("background", hp_bg)
 	p2_hp_bar.add_theme_stylebox_override("fill", hp_fg)
+	p1_hp_bar.custom_minimum_size = BASE_HP_BAR_SIZE * hp_scale
+	p2_hp_bar.custom_minimum_size = BASE_HP_BAR_SIZE * hp_scale
 	
-	p1_hp_display.offset_left = 20.0 * text_scale
-	p1_hp_display.offset_top = 20.0 * text_scale
-	p1_hp_display.offset_right = 220.0 * text_scale
-	p1_hp_display.offset_bottom = 90.0 * text_scale
+	p1_hp_display.offset_left = 20.0 * hp_scale
+	p1_hp_display.offset_top = 20.0 * hp_scale
+	p1_hp_display.offset_right = 220.0 * hp_scale
+	p1_hp_display.offset_bottom = 90.0 * hp_scale
 	
-	p2_hp_display.offset_left = -220.0 * text_scale
-	p2_hp_display.offset_top = 20.0 * text_scale
-	p2_hp_display.offset_right = -20.0 * text_scale
-	p2_hp_display.offset_bottom = 90.0 * text_scale
+	p2_hp_display.offset_left = -220.0 * hp_scale
+	p2_hp_display.offset_top = 20.0 * hp_scale
+	p2_hp_display.offset_right = -20.0 * hp_scale
+	p2_hp_display.offset_bottom = 90.0 * hp_scale
 	
 	timer_label.add_theme_font_size_override("font_size", int(BASE_TIMER_FONT_SIZE * text_scale))
 	timer_label.offset_left = -130.0 * text_scale
@@ -747,7 +798,10 @@ func _apply_lobby_metrics() -> void:
 		safe_area_rect = _get_safe_area_rect()
 		_update_ui_scale(safe_area_rect.size)
 	
-	var scale = ui_text_scale
+	var min_side = min(window_safe_size.x, window_safe_size.y)
+	var lobby_boost = LOBBY_MOBILE_BOOST if _is_compact_layout(min_side) else 1.0
+	var scale = ui_text_scale * lobby_boost
+	var metrics_scale = ui_metrics_scale * lobby_boost
 	var panel_size = BASE_LOBBY_PANEL_SIZE * scale
 	var max_w = safe_area_rect.size.x * 0.94
 	var max_h = safe_area_rect.size.y * 0.9
@@ -763,12 +817,12 @@ func _apply_lobby_metrics() -> void:
 	lobby_panel.set_anchor_and_offset(SIDE_BOTTOM, 0.5, panel_size.y * 0.5)
 	
 	if lobby_vbox and is_instance_valid(lobby_vbox):
-		var edge_pad = BASE_LOBBY_VBOX_PADDING * ui_metrics_scale
+		var edge_pad = BASE_LOBBY_VBOX_PADDING * metrics_scale
 		lobby_vbox.set_anchor_and_offset(SIDE_LEFT, 0, edge_pad)
 		lobby_vbox.set_anchor_and_offset(SIDE_RIGHT, 1, -edge_pad)
 		lobby_vbox.set_anchor_and_offset(SIDE_TOP, 0, edge_pad)
 		lobby_vbox.set_anchor_and_offset(SIDE_BOTTOM, 1, -edge_pad)
-		lobby_vbox.add_theme_constant_override("separation", int(BASE_LOBBY_VBOX_SEPARATION * ui_metrics_scale))
+		lobby_vbox.add_theme_constant_override("separation", int(BASE_LOBBY_VBOX_SEPARATION * metrics_scale))
 	
 	if lobby_title and is_instance_valid(lobby_title):
 		lobby_title.add_theme_font_size_override("font_size", int(BASE_LOBBY_TITLE_FONT_SIZE * scale))
@@ -952,38 +1006,9 @@ func update_ui():
 		
 		if spell.has("icon_atlas"):
 			var path = spell.icon_atlas.strip_edges()
-			var tex = null
-			
-			# Multi-Format Hyper-Diagnostic Load
-			var fa = FileAccess.open(path, FileAccess.READ)
-			if fa:
-				var flen = fa.get_length()
-				var buffer = fa.get_buffer(flen)
-				var img = Image.new()
-				
-				# Detect format via magic bytes
-				var magic = buffer.slice(0, 4).hex_encode()
-				var err = OK
-				
-				if magic == "89504e47": # PNG
-					err = img.load_png_from_buffer(buffer)
-					print("[UI] Decoding PNG: ", path)
-				elif magic.begins_with("ffd8ff"): # JPEG
-					err = img.load_jpg_from_buffer(buffer)
-					print("[UI] Decoding JPEG (despite .png ext): ", path)
-				else:
-					# Try generic load as last resort
-					err = img.load_from_buffer(buffer)
-					print("[UI] Unknown format magic ", magic, ", trying generic load")
-					
-				if err == OK:
-					tex = ImageTexture.create_from_image(img)
-					print("[UI] SUCCESS: Manual Decode OK")
-				else:
-					printerr("[UI] FAIL: Decode Error ", err, " for magic ", magic)
-			else:
-				# Fallback to standard for robustness
-				tex = load(path)
+			var tex = spell_atlases.get(path, null)
+			if tex == null:
+				tex = _load_texture_from_path(path)
 			
 			if tex:
 				var atlas = AtlasTexture.new()
