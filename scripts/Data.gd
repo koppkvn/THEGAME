@@ -274,11 +274,135 @@ const MELEE_SPELLS = {
 	}
 }
 
+# =============================================================================
+# SPELLS - Elemental Mage
+# =============================================================================
+# Lower HP (8000) but high AP (12) reflecting glass cannon mana pool
+
+const MAGE_SPELLS = {
+	# 1) Arcane Missile - Consistent long range damage
+	"ARCANE_MISSILE": {
+		"id": "ARCANE_MISSILE",
+		"label": "Arcane Missile",
+		"desc": "Deal 300-400 damage. High range, low cost magic missile.",
+		"type": "ATTACK",
+		"range": 9,
+		"min_range": 1,
+		"damage_min": 300,
+		"damage_max": 400,
+		"ap_cost": 3,
+		"casts_per_turn": 3,
+		"cooldown": 0,
+		"requires_los": true,
+		"icon_atlas": "res://assets/spells/mage_spells.png",
+		"icon_region": Rect2(50, 50, 240, 240)
+	},
+	
+	# 2) Frost Nova - Close range CC
+	"FROST_NOVA": {
+		"id": "FROST_NOVA",
+		"label": "Frost Nova",
+		"desc": "Deal 150-250 damage to all enemies within 2 tiles. Removes 2 MP.",
+		"type": "ATTACK",
+		"range": 0,
+		"min_range": 0,
+		"damage_min": 150,
+		"damage_max": 250,
+		"ap_cost": 4,
+		"casts_per_turn": 1,
+		"cooldown": 1,
+		"requires_los": false,
+		"aoe_radius": 2,
+		"mp_removal": 2,
+		"icon_atlas": "res://assets/spells/mage_spells.png",
+		"icon_region": Rect2(391, 50, 240, 240)
+	},
+	
+	# 3) Flame Pillar - Medium range area burn
+	"FLAME_PILLAR": {
+		"id": "FLAME_PILLAR",
+		"label": "Flame Pillar",
+		"desc": "Deal 400-600 damage to target and adjacent tiles.",
+		"type": "ATTACK",
+		"range": 6,
+		"min_range": 1,
+		"damage_min": 400,
+		"damage_max": 600,
+		"ap_cost": 5,
+		"casts_per_turn": 1,
+		"cooldown": 0,
+		"requires_los": true,
+		"aoe_radius": 1,
+		"icon_atlas": "res://assets/spells/mage_spells.png",
+		"icon_region": Rect2(732, 50, 240, 240)
+	},
+	
+	# 4) Blink - Tactical teleport
+	"BLINK": {
+		"id": "BLINK",
+		"label": "Blink",
+		"desc": "Teleport to a targeted empty tile within 4 tiles. Ignores obstacles.",
+		"type": "MOVEMENT",
+		"range": 4,
+		"min_range": 1,
+		"damage_min": 0,
+		"damage_max": 0,
+		"ap_cost": 2,
+		"casts_per_turn": 1,
+		"cooldown": 1,
+		"requires_los": false,
+		"requires_empty_tile": true,
+		"teleport": true,
+		"icon_atlas": "res://assets/spells/mage_spells.png",
+		"icon_region": Rect2(50, 391, 240, 240)
+	},
+	
+	# 5) Arcane Shield - Damage reduction
+	"ARCANE_SHIELD": {
+		"id": "ARCANE_SHIELD",
+		"label": "Arcane Shield",
+		"desc": "Reduce incoming damage by 50% for 1 turn.",
+		"type": "BUFF",
+		"range": 0,
+		"min_range": 0,
+		"damage_min": 0,
+		"damage_max": 0,
+		"ap_cost": 3,
+		"casts_per_turn": 1,
+		"cooldown": 3,
+		"requires_los": false,
+		"damage_reduction": 0.5,
+		"icon_atlas": "res://assets/spells/mage_spells.png",
+		"icon_region": Rect2(50, 732, 240, 240)
+	},
+	
+	# 6) Meteor Impact - Massive long range blast
+	"METEOR": {
+		"id": "METEOR",
+		"label": "Meteor",
+		"desc": "Deal 800-1200 damage in a huge 3x3 area. Massive cost.",
+		"type": "ATTACK",
+		"range": 10,
+		"min_range": 4,
+		"damage_min": 800,
+		"damage_max": 1200,
+		"ap_cost": 8,
+		"casts_per_turn": 1,
+		"cooldown": 3,
+		"requires_los": true,
+		"aoe_radius": 2,
+		"icon_atlas": "res://assets/spells/mage_spells.png",
+		"icon_region": Rect2(391, 391, 582, 582)
+	}
+}
+
 # Combined spells dictionary
 static func get_all_spells() -> Dictionary:
 	var all = ANTIGRAVITY_SPELLS.duplicate()
 	for key in MELEE_SPELLS:
 		all[key] = MELEE_SPELLS[key]
+	for key in MAGE_SPELLS:
+		all[key] = MAGE_SPELLS[key]
 	return all
 
 # Helper to get a spell by ID
@@ -287,15 +411,18 @@ static func get_spell(spell_id: String) -> Dictionary:
 		return ANTIGRAVITY_SPELLS[spell_id]
 	if MELEE_SPELLS.has(spell_id):
 		return MELEE_SPELLS[spell_id]
+	if MAGE_SPELLS.has(spell_id):
+		return MAGE_SPELLS[spell_id]
 	return {}
 
 # Get all spell IDs for a character
 static func get_character_spells(character_id: String) -> Array:
 	if character_id == "MELEE":
 		return MELEE_SPELLS.keys()
+	if character_id == "MAGE":
+		return MAGE_SPELLS.keys()
 	return ANTIGRAVITY_SPELLS.keys()
 
-# Constants for game balance - Anti-Gravity spec (Ranged)
 const MAX_HP = 10000
 const MAX_AP = 10
 const MAX_MP = 4  # Movement points
@@ -305,16 +432,32 @@ const MELEE_HP = 12000
 const MELEE_AP = 10
 const MELEE_MP = 3
 
+# Constants for Mage character (Lower HP, Very High AP)
+const MAGE_HP = 8000
+const MAGE_AP = 12
+const MAGE_MP = 4
+
 static func create_initial_state(p1_class: String = "RANGER", p2_class: String = "RANGER") -> Dictionary:
-	var p1_hp = MAX_HP if p1_class == "RANGER" else MELEE_HP
-	var p2_hp = MAX_HP if p2_class == "RANGER" else MELEE_HP
-	var p1_mp = MAX_MP if p1_class == "RANGER" else MELEE_MP
+	var p1_hp = MAX_HP
+	if p1_class == "MELEE": p1_hp = MELEE_HP
+	elif p1_class == "MAGE": p1_hp = MAGE_HP
+	
+	var p2_hp = MAX_HP
+	if p2_class == "MELEE": p2_hp = MELEE_HP
+	elif p2_class == "MAGE": p2_hp = MAGE_HP
+	
+	var p1_mp = MAX_MP
+	if p1_class == "MELEE": p1_mp = MELEE_MP
+	elif p1_class == "MAGE": p1_mp = MAGE_MP
+	
+	var p1_ap = MAX_AP
+	if p1_class == "MAGE": p1_ap = MAGE_AP
 	
 	return {
 		"turn": {
 			"currentPlayerId": "P1",
 			"number": 1,
-			"apRemaining": MAX_AP, # AP is reset at turn start anyway
+			"apRemaining": p1_ap,
 			"movesRemaining": p1_mp
 		},
 		"units": {

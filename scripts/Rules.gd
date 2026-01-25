@@ -180,6 +180,21 @@ static func get_aoe_preview_tiles(state: Dictionary, caster_id: String, spell_id
 			for r in range(_caster.y - 1, _caster.y + 2):
 				for c in range(_caster.x - 1, _caster.x + 2):
 					tiles.append({"x": c, "y": r})
+		"METEOR":
+			# 5x5 massive AoE
+			for r in range(target_y - 2, target_y + 3):
+				for c in range(target_x - 2, target_x + 3):
+					tiles.append({"x": c, "y": r})
+		"FROST_NOVA":
+			# 5x5 around caster
+			for r in range(_caster.y - 2, _caster.y + 3):
+				for c in range(_caster.x - 2, _caster.x + 3):
+					tiles.append({"x": c, "y": r})
+		"FLAME_PILLAR":
+			# 3x3 at target
+			for r in range(target_y - 1, target_y + 2):
+				for c in range(target_x - 1, target_x + 2):
+					tiles.append({"x": c, "y": r})
 		_:
 			# Single target
 			tiles = [{"x": target_x, "y": target_y}]
@@ -930,8 +945,6 @@ static func apply_action(state: Dictionary, action: Dictionary) -> Dictionary:
 				return next
 			
 			# ---------------------------------------------------------
-			# 6) ADRENALINE SURGE - 50% chance: +1 MP or heal 300 HP
-			# ---------------------------------------------------------
 			"ADRENALINE_SURGE":
 				# 50% roll to determine effect
 				var roll = randf()
@@ -949,6 +962,62 @@ static func apply_action(state: Dictionary, action: Dictionary) -> Dictionary:
 					var actual_heal = me.hp - old_hp
 					push_log(next, "%s restores %d HP! (Adrenaline Surge)" % [pid, actual_heal])
 				
+				return next
+
+			# =============================================================
+			# MAGE CHARACTER SPELLS
+			# =============================================================
+
+			"ARCANE_MISSILE":
+				var hit_unit = get_unit_at(next, target.x, target.y)
+				if hit_unit:
+					var dmg = roll_damage(spell.damage_min, spell.damage_max)
+					deal_damage_at(next, target.x, target.y, dmg, "Arcane Missile", me)
+				return next
+
+			"FROST_NOVA":
+				push_log(next, "FROST NOVA!")
+				for r in range(me.y - 2, me.y + 3):
+					for c in range(me.x - 2, me.x + 3):
+						var u = get_unit_at(next, c, r)
+						if u and u.id != me.id:
+							var dmg = roll_damage(spell.damage_min, spell.damage_max)
+							deal_damage_at(next, c, r, dmg, "Frost Nova", me)
+							apply_status(u, "mp_reduction", {"turns": 1, "amount": spell.mp_removal})
+				return next
+
+			"FLAME_PILLAR":
+				push_log(next, "FLAME PILLAR!")
+				for r in range(target.y - 1, target.y + 2):
+					for c in range(target.x - 1, target.x + 2):
+						var u = get_unit_at(next, c, r)
+						if u:
+							var dmg = roll_damage(spell.damage_min, spell.damage_max)
+							deal_damage_at(next, c, r, dmg, "Flame Pillar", me)
+				return next
+
+			"BLINK":
+				if get_unit_at(next, target.x, target.y):
+					next.turn.apRemaining += ap_cost
+					me.casts_this_turn[spell_id] = casts_this_turn
+					return state
+				me.x = target.x
+				me.y = target.y
+				push_log(next, "%s blinks!" % pid)
+				return next
+
+			"ARCANE_SHIELD":
+				apply_status(me, "damage_reduction", {"turns": 1, "percent": spell.damage_reduction})
+				return next
+
+			"METEOR":
+				push_log(next, "METEOR IMPACT!")
+				for r in range(target.y - 2, target.y + 3):
+					for c in range(target.x - 2, target.x + 3):
+						var u = get_unit_at(next, c, r)
+						if u:
+							var dmg = roll_damage(spell.damage_min, spell.damage_max)
+							deal_damage_at(next, c, r, dmg, "Meteor", me)
 				return next
 		
 		return next
@@ -1011,10 +1080,19 @@ static func handle_turn_end(state):
 	# Switch turn
 	state.turn.currentPlayerId = next_player
 	if next_player == "P1": state.turn.number += 1
-	state.turn.apRemaining = Data.MAX_AP
-	# Set MP based on character class
+	
+	# Determine base stats for the next player
 	var next_unit = state.units[next_player]
-	var base_mp = Data.MELEE_MP if next_unit.get("character_class", "RANGER") == "MELEE" else Data.MAX_MP
+	var n_class = next_unit.get("character_class", "RANGER")
+	
+	var base_ap = Data.MAX_AP
+	if n_class == "MAGE": base_ap = Data.MAGE_AP
+	
+	var base_mp = Data.MAX_MP
+	if n_class == "MELEE": base_mp = Data.MELEE_MP
+	elif n_class == "MAGE": base_mp = Data.MAGE_MP
+	
+	state.turn.apRemaining = base_ap
 	state.turn.movesRemaining = base_mp
 	
 	var p_unit = state.units[next_player]

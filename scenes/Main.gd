@@ -259,6 +259,9 @@ func _on_char_toggle():
 	if selected_character == "RANGER":
 		selected_character = "MELEE"
 		lobby_char_btn.text = "Class: MELEE (Brawler)"
+	elif selected_character == "MELEE":
+		selected_character = "MAGE"
+		lobby_char_btn.text = "Class: MAGE (Elementalist)"
 	else:
 		selected_character = "RANGER"
 		lobby_char_btn.text = "Class: RANGER (Anti-Gravity)"

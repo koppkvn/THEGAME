@@ -7,6 +7,15 @@ var attack_anim_progress: float = 0.0
 var is_attacking: bool = false
 var attack_target_dir: Vector2 = Vector2.RIGHT
 
+func _ready():
+	# For characters with continuous animations (like Mage floating)
+	set_process(true)
+
+func _process(_delta):
+	# Persistent animations
+	if unit_data and unit_data.get("character_class") == "MAGE":
+		queue_redraw()
+
 func set_unit(data: Dictionary):
 	unit_data = data
 	position = Iso.grid_to_screen(data.x, data.y)
@@ -37,6 +46,8 @@ func _draw():
 	
 	if char_class == "MELEE":
 		_draw_melee_character(is_p1)
+	elif char_class == "MAGE":
+		_draw_mage_character(is_p1)
 	else:
 		_draw_ranger_character(is_p1)
 	
@@ -480,3 +491,51 @@ func _draw_melee_character(is_p1: bool):
 	draw_line(Vector2(0, -5), Vector2(0, 6), metal_shine, 2)
 	
 	draw_set_transform(Vector2.ZERO, 0, Vector2.ONE)
+# =============================================================================
+# MAGE CHARACTER - Mystic robe and staff
+# =============================================================================
+func _draw_mage_character(is_p1: bool):
+	var robe_primary = Color("#4c1d95") if is_p1 else Color("#831843")
+	var robe_secondary = Color("#7c3aed") if is_p1 else Color("#db2777")
+	var gold = Color("#f59e0b")
+	var staff_wood = Color("#451a03")
+	var crystal = Color("#22d3ee") if is_p1 else Color("#fb7185")
+	var skin = Color("#e0ac69")
+	
+	# Floating animation
+	var float_y = sin(Time.get_ticks_msec() * 0.005) * 5.0
+	var base_pos = Vector2(0, float_y)
+	
+	# 1. Staff (Behind)
+	draw_line(base_pos + Vector2(25, -20), base_pos + Vector2(35, -90), staff_wood, 4)
+	draw_circle(base_pos + Vector2(35, -95), 8, crystal)
+	draw_circle(base_pos + Vector2(35, -95), 12, Color(crystal.r, crystal.g, crystal.b, 0.3))
+	
+	# 2. Robe Bottom
+	var robe_pts = PackedVector2Array([
+		base_pos + Vector2(-25, 0),
+		base_pos + Vector2(25, 0),
+		base_pos + Vector2(15, -60),
+		base_pos + Vector2(-15, -60)
+	])
+	draw_colored_polygon(robe_pts, robe_primary)
+	draw_polyline(robe_pts, robe_secondary, 2)
+	
+	# 3. Arms
+	draw_line(base_pos + Vector2(-15, -45), base_pos + Vector2(-28, -25), robe_primary, 8)
+	draw_line(base_pos + Vector2(15, -45), base_pos + Vector2(28, -25), robe_primary, 8)
+	
+	# 4. Head
+	draw_circle(base_pos + Vector2(0, -70), 12, skin)
+	
+	# 5. Hat
+	var hat_pts = PackedVector2Array([
+		base_pos + Vector2(-22, -75),
+		base_pos + Vector2(22, -75),
+		base_pos + Vector2(0, -110)
+	])
+	draw_colored_polygon(hat_pts, robe_primary)
+	draw_line(base_pos + Vector2(-22, -75), base_pos + Vector2(22, -75), gold, 3)
+	
+	# 6. Belt/Trim
+	draw_line(base_pos + Vector2(-16, -40), base_pos + Vector2(16, -40), gold, 2)
