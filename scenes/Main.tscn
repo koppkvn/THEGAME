@@ -53,11 +53,13 @@ offset_left = -130.0
 offset_top = -50.0
 offset_right = -20.0
 offset_bottom = -15.0
+grow_horizontal = 0
+grow_vertical = 0
 theme_override_colors/font_color = Color(1, 0.85, 0.3, 1)
 theme_override_font_sizes/font_size = 22
+text = "⏱️ 30s"
 horizontal_alignment = 2
 vertical_alignment = 1
-text = "⏱️ 30s"
 
 [node name="BottomBar" type="VBoxContainer" parent="CanvasLayer/HUD"]
 layout_mode = 1
@@ -76,20 +78,20 @@ layout_mode = 2
 size_flags_horizontal = 4
 theme_override_colors/font_color = Color(0.2, 0.95, 1, 1)
 theme_override_font_sizes/font_size = 20
-horizontal_alignment = 1
 text = "⚡ AP: 10 / 10"
+horizontal_alignment = 1
 
 [node name="SpellsContainer" type="GridContainer" parent="CanvasLayer/HUD/BottomBar"]
 layout_mode = 2
 size_flags_horizontal = 4
-columns = 5
 theme_override_constants/h_separation = 8
 theme_override_constants/v_separation = 8
+columns = 5
 
 [node name="EndTurnBtn" type="Button" parent="CanvasLayer/HUD/BottomBar"]
+custom_minimum_size = Vector2(180, 40)
 layout_mode = 2
 size_flags_horizontal = 4
-custom_minimum_size = Vector2(180, 40)
 theme_override_font_sizes/font_size = 16
 text = "⏭️ End Turn [Space]"
 
@@ -107,7 +109,6 @@ text = "Log..."
 
 [node name="P1HPDisplay" type="VBoxContainer" parent="CanvasLayer/HUD"]
 layout_mode = 1
-anchors_preset = 0
 offset_left = 20.0
 offset_top = 20.0
 offset_right = 200.0
@@ -120,8 +121,8 @@ theme_override_font_sizes/font_size = 18
 text = "Player 1"
 
 [node name="P1HPBar" type="ProgressBar" parent="CanvasLayer/HUD/P1HPDisplay"]
-layout_mode = 2
 custom_minimum_size = Vector2(150, 20)
+layout_mode = 2
 max_value = 10000.0
 value = 10000.0
 show_percentage = false
@@ -139,24 +140,25 @@ offset_left = -200.0
 offset_top = 20.0
 offset_right = -20.0
 offset_bottom = 80.0
+grow_horizontal = 0
 
 [node name="P2Name" type="Label" parent="CanvasLayer/HUD/P2HPDisplay"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.937, 0.267, 0.267, 1)
 theme_override_font_sizes/font_size = 18
-horizontal_alignment = 2
 text = "Player 2"
+horizontal_alignment = 2
 
 [node name="P2HPBar" type="ProgressBar" parent="CanvasLayer/HUD/P2HPDisplay"]
-layout_mode = 2
 custom_minimum_size = Vector2(150, 20)
+layout_mode = 2
 max_value = 10000.0
 value = 10000.0
 show_percentage = false
 
 [node name="P2HPLabel" type="Label" parent="CanvasLayer/HUD/P2HPDisplay"]
 layout_mode = 2
-horizontal_alignment = 2
 text = "10000 / 10000"
+horizontal_alignment = 2
 
 [node name="DamagePopups" type="Node2D" parent="."]
