@@ -2,12 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://8fxgasefwuak"
-valid=false
+uid="uid://38oarfmxcmb8"
+path="res://.godot/imported/ranger_spells.png-40368f9a75627140e83f83d15061d362.ctex"
+metadata={
+"vram_texture": false
+}
 
 [deps]
 
 source_file="res://assets/spells/ranger_spells.png"
+dest_files=["res://.godot/imported/ranger_spells.png-40368f9a75627140e83f83d15061d362.ctex"]
 
 [params]
 

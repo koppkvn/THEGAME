@@ -2,12 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bgb8ucnjsnlum"
-valid=false
+uid="uid://ddiwspkck5bj1"
+path="res://.godot/imported/mage_spells.png-bbe2d49bfb9e4222b5908d4dd86f57e3.ctex"
+metadata={
+"vram_texture": false
+}
 
 [deps]
 
 source_file="res://assets/spells/mage_spells.png"
+dest_files=["res://.godot/imported/mage_spells.png-bbe2d49bfb9e4222b5908d4dd86f57e3.ctex"]
 
 [params]
 
