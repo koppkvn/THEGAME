@@ -41,7 +41,9 @@ const ANTIGRAVITY_SPELLS = {
 		"cooldown": 0,
 		"requires_los": true,
 		"push": 3,
-		"collision_damage_per_tile": 100
+		"collision_damage_per_tile": 100,
+		"icon_atlas": "res://assets/spells/ranger_spells.png",
+		"icon_region": Rect2(50, 80, 240, 240)
 	},
 	
 	# 2) Piercing Arrow - Ignores LOS, damage only
@@ -57,7 +59,9 @@ const ANTIGRAVITY_SPELLS = {
 		"ap_cost": 2,
 		"casts_per_turn": 2,
 		"cooldown": 0,
-		"requires_los": false
+		"requires_los": false,
+		"icon_atlas": "res://assets/spells/ranger_spells.png",
+		"icon_region": Rect2(391, 80, 240, 240)
 	},
 	
 	# 3) Exponential Arrow - Stage-based damage progression
@@ -76,7 +80,9 @@ const ANTIGRAVITY_SPELLS = {
 			1: {"min": 200, "max": 600},
 			2: {"min": 600, "max": 1200},
 			3: {"min": 3000, "max": 4000}
-		}
+		},
+		"icon_atlas": "res://assets/spells/ranger_spells.png",
+		"icon_region": Rect2(732, 80, 240, 240)
 	},
 	
 	# 4) Immobilizing Arrow - MP removal
@@ -94,7 +100,9 @@ const ANTIGRAVITY_SPELLS = {
 		"cooldown": 0,
 		"requires_los": true,
 		"mp_removal_min": 0,
-		"mp_removal_max": 2
+		"mp_removal_max": 2,
+		"icon_atlas": "res://assets/spells/ranger_spells.png",
+		"icon_region": Rect2(50, 421, 240, 240)
 	},
 	
 	# 5) Displacement Arrow - Cross push from empty tile
@@ -111,7 +119,9 @@ const ANTIGRAVITY_SPELLS = {
 		"requires_los": true,
 		"requires_empty_tile": true,
 		"cross_range": 3,
-		"push_distance": 2
+		"push_distance": 2,
+		"icon_atlas": "res://assets/spells/ranger_spells.png",
+		"icon_region": Rect2(391, 421, 240, 240)
 	},
 	
 	# 6) Thief Arrow - Random effects
@@ -128,7 +138,9 @@ const ANTIGRAVITY_SPELLS = {
 		"casts_per_turn": 2,
 		"cooldown": 0,
 		"requires_los": true,
-		"random_effects": true
+		"random_effects": true,
+		"icon_atlas": "res://assets/spells/ranger_spells.png",
+		"icon_region": Rect2(732, 421, 240, 240)
 	}
 }
 
@@ -153,7 +165,9 @@ const MELEE_SPELLS = {
 		"cooldown": 0,
 		"requires_los": true,
 		"melee": true,
-		"displacement_bonus": 200
+		"displacement_bonus": 200,
+		"icon_atlas": "res://assets/spells/melee_spells.png",
+		"icon_region": Rect2(70, 180, 200, 160)
 	},
 	
 	# 2) Magnetic Pull - Counter to knockback/zoning
@@ -171,7 +185,9 @@ const MELEE_SPELLS = {
 		"cooldown": 0,
 		"requires_los": true,
 		"pull_distance": 3,
-		"adjacent_mp_reduction": 1
+		"adjacent_mp_reduction": 1,
+		"icon_atlas": "res://assets/spells/melee_spells.png",
+		"icon_region": Rect2(411, 180, 200, 160)
 	},
 	
 	# 3) Gravity Lock - Remove all MP and deal damage
@@ -189,7 +205,9 @@ const MELEE_SPELLS = {
 		"cooldown": 2,
 		"requires_los": true,
 		"melee": true,
-		"removes_all_mp": true
+		"removes_all_mp": true,
+		"icon_atlas": "res://assets/spells/melee_spells.png",
+		"icon_region": Rect2(752, 180, 200, 160)
 	},
 	
 	# 4) Kinetic Dash - Gap closer with tempo reward
@@ -207,7 +225,9 @@ const MELEE_SPELLS = {
 		"cooldown": 0,
 		"requires_los": false,
 		"dash": true,
-		"adjacent_ap_bonus": 1
+		"adjacent_ap_bonus": 1,
+		"icon_atlas": "res://assets/spells/melee_spells.png",
+		"icon_region": Rect2(70, 521, 200, 160)
 	},
 	
 	# 5) Shockwave Slam - Anti-surround AoE with push
@@ -227,7 +247,9 @@ const MELEE_SPELLS = {
 		"melee": true,
 		"aoe_radius": 1,
 		"push_distance": 1,
-		"wall_collision_damage": 150
+		"wall_collision_damage": 150,
+		"icon_atlas": "res://assets/spells/melee_spells.png",
+		"icon_region": Rect2(411, 521, 200, 160)
 	},
 	
 	# 6) Adrenaline Surge - Random effect: +1 MP or heal 300 HP (50% each)
@@ -246,7 +268,9 @@ const MELEE_SPELLS = {
 		"requires_los": false,
 		"self_cast": true,
 		"random_mp_bonus": 1,
-		"random_heal": 300
+		"random_heal": 300,
+		"icon_atlas": "res://assets/spells/melee_spells.png",
+		"icon_region": Rect2(752, 521, 200, 160)
 	}
 }
 

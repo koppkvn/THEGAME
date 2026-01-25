@@ -62,10 +62,10 @@ const UI_BASE_MIN_SIDE = 800.0
 const UI_SCALE_MIN = 1.0
 const UI_SCALE_MAX = 2.0
 const BASE_TOPBAR_HEIGHT = 40.0
-const BASE_SPELL_BTN_SIZE = Vector2(100, 50)
-const BASE_SPELL_FONT_SIZE = 14
+const BASE_SPELL_BTN_SIZE = Vector2(80, 80)  # Slightly larger for icons
+const BASE_SPELL_FONT_SIZE = 12
 const BASE_SPELL_LABEL_FONT_SIZE = 11
-const BASE_END_TURN_SIZE = Vector2(180, 40)
+const BASE_END_TURN_SIZE = Vector2(160, 50)
 const BASE_END_TURN_FONT_SIZE = 16
 const BASE_AP_FONT_SIZE = 20
 const BASE_TIMER_FONT_SIZE = 22
@@ -145,6 +145,21 @@ func _ready():
 func show_lobby():
 	# Create lobby panel
 	lobby_panel = Panel.new()
+	var lobby_style = StyleBoxFlat.new()
+	lobby_style.bg_color = Color(0.1, 0.1, 0.12, 0.95)
+	lobby_style.border_width_left = 4
+	lobby_style.border_width_right = 4
+	lobby_style.border_width_top = 4
+	lobby_style.border_width_bottom = 4
+	lobby_style.border_color = Color(0.3, 0.3, 0.4, 0.8)
+	lobby_style.corner_radius_top_left = 15
+	lobby_style.corner_radius_top_right = 15
+	lobby_style.corner_radius_bottom_left = 15
+	lobby_style.corner_radius_bottom_right = 15
+	lobby_style.shadow_size = 10
+	lobby_style.shadow_color = Color(0, 0, 0, 0.5)
+	lobby_panel.add_theme_stylebox_override("panel", lobby_style)
+	
 	lobby_panel.custom_minimum_size = BASE_LOBBY_PANEL_SIZE
 	lobby_panel.set_anchors_preset(Control.PRESET_CENTER)
 	lobby_panel.set_anchor_and_offset(SIDE_LEFT, 0.5, -BASE_LOBBY_PANEL_SIZE.x * 0.5)
@@ -207,8 +222,24 @@ func show_lobby():
 	status_label = Label.new()
 	status_label.text = ""
 	status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	status_label.add_theme_color_override("font_color", Color.YELLOW)
+	status_label.add_theme_color_override("font_color", Color.CYAN)
+	status_label.add_theme_font_size_override("font_size", 16)
 	lobby_vbox.add_child(status_label)
+	
+	# Apply some default button styles locally for the lobby
+	for btn in [lobby_char_btn, lobby_create_btn, lobby_join_btn, lobby_offline_btn]:
+		var bs = StyleBoxFlat.new()
+		bs.bg_color = Color(0.2, 0.2, 0.3, 0.9)
+		bs.border_width_bottom = 4
+		bs.border_color = Color(0.1, 0.1, 0.2, 1.0)
+		bs.corner_radius_top_left = 6
+		bs.corner_radius_top_right = 6
+		bs.corner_radius_bottom_left = 6
+		bs.corner_radius_bottom_right = 6
+		btn.add_theme_stylebox_override("normal", bs)
+		var bsh = bs.duplicate()
+		bsh.bg_color = Color(0.3, 0.3, 0.5, 1.0)
+		btn.add_theme_stylebox_override("hover", bsh)
 	
 	lobby_panel.add_child(lobby_vbox)
 	$CanvasLayer.add_child(lobby_panel)
@@ -560,9 +591,8 @@ func _get_spell_button_size(columns: int) -> Vector2:
 	var separation = int(BASE_TOPBAR_GAP * scale)
 	var available_width = max(0.0, safe_area_rect.size.x - padding * 2.0 - separation * max(columns - 1, 0))
 	var width = available_width / max(columns, 1)
-	var text_height = float(BASE_SPELL_FONT_SIZE) * ui_text_scale
-	var min_height = text_height * 1.6
-	var height = max(min_height, width * 0.5)
+	# For mobile icons, we want square buttons or close to square
+	var height = width
 	return Vector2(width, height)
 
 func _get_end_turn_button_size() -> Vector2:
@@ -608,8 +638,32 @@ func _apply_ui_metrics() -> void:
 	p1_hp_label.add_theme_font_size_override("font_size", int(BASE_HP_LABEL_FONT_SIZE * text_scale))
 	p2_hp_label.add_theme_font_size_override("font_size", int(BASE_HP_LABEL_FONT_SIZE * text_scale))
 	
-	p1_hp_bar.custom_minimum_size = BASE_HP_BAR_SIZE * text_scale
-	p2_hp_bar.custom_minimum_size = BASE_HP_BAR_SIZE * text_scale
+	# HP Bar Styling
+	var hp_bg = StyleBoxFlat.new()
+	hp_bg.bg_color = Color(0.1, 0.1, 0.1, 0.7)
+	hp_bg.border_width_left = 2
+	hp_bg.border_width_right = 2
+	hp_bg.border_width_top = 2
+	hp_bg.border_width_bottom = 2
+	hp_bg.border_color = Color(0.3, 0.3, 0.35, 0.8)
+	hp_bg.corner_radius_top_left = 6
+	hp_bg.corner_radius_top_right = 6
+	hp_bg.corner_radius_bottom_left = 6
+	hp_bg.corner_radius_bottom_right = 6
+	
+	var hp_fg = StyleBoxFlat.new()
+	hp_fg.bg_color = Color(0.85, 0.15, 0.15)
+	hp_fg.corner_radius_top_left = 4
+	hp_fg.corner_radius_top_right = 4
+	hp_fg.corner_radius_bottom_left = 4
+	hp_fg.corner_radius_bottom_right = 4
+	hp_fg.border_width_right = 2
+	hp_fg.border_color = Color(1.0, 0.3, 0.3, 0.5)
+	
+	p1_hp_bar.add_theme_stylebox_override("background", hp_bg)
+	p1_hp_bar.add_theme_stylebox_override("fill", hp_fg)
+	p2_hp_bar.add_theme_stylebox_override("background", hp_bg)
+	p2_hp_bar.add_theme_stylebox_override("fill", hp_fg)
 	
 	p1_hp_display.offset_left = 20.0 * text_scale
 	p1_hp_display.offset_top = 20.0 * text_scale
@@ -635,10 +689,31 @@ func _apply_ui_metrics() -> void:
 	end_turn_btn.add_theme_font_size_override("font_size", int(BASE_END_TURN_FONT_SIZE * text_scale))
 	end_turn_btn.custom_minimum_size = _get_end_turn_button_size()
 	
+	# End Turn Button Styling
+	var et_style = StyleBoxFlat.new()
+	et_style.bg_color = Color(0.1, 0.4, 0.1, 0.8) if _is_my_turn() else Color(0.2, 0.2, 0.2, 0.5)
+	et_style.border_width_left = 2
+	et_style.border_width_right = 2
+	et_style.border_width_top = 2
+	et_style.border_width_bottom = 2
+	et_style.border_color = Color(0.2, 0.8, 0.2, 0.6) if _is_my_turn() else Color(0.4, 0.4, 0.4, 0.3)
+	et_style.corner_radius_top_left = 10
+	et_style.corner_radius_top_right = 10
+	et_style.corner_radius_bottom_left = 10
+	et_style.corner_radius_bottom_right = 10
+	end_turn_btn.add_theme_stylebox_override("normal", et_style)
+	
+	var et_hover = et_style.duplicate()
+	et_hover.bg_color = et_style.bg_color.lightened(0.2)
+	end_turn_btn.add_theme_stylebox_override("hover", et_hover)
+	
 	log_panel.add_theme_font_size_override("normal_font_size", int(BASE_LOG_FONT_SIZE * text_scale))
 	if spell_tooltip_label:
 		spell_tooltip_label.add_theme_font_size_override("normal_font_size", int(BASE_TOOLTIP_FONT_SIZE * text_scale))
 	_apply_lobby_metrics()
+
+func _is_my_turn() -> bool:
+	return game_state and (not multiplayer_mode or game_state.turn.currentPlayerId == my_player_id)
 
 func _get_spell_columns(window_safe_size: Vector2) -> int:
 	var min_side = min(window_safe_size.x, window_safe_size.y)
@@ -830,82 +905,153 @@ func update_ui():
 	# Get spells dynamically from character class
 	var spell_list = Data.get_character_spells(char_id)
 	var button_size = _get_spell_button_size(spell_container.columns)
-	var spell_font_size = int(BASE_SPELL_FONT_SIZE * ui_text_scale)
 	var cost_font_size = int(BASE_SPELL_LABEL_FONT_SIZE * ui_text_scale)
-	var label_spacing = int(6 * ui_metrics_scale)
+	var label_spacing = int(4 * ui_metrics_scale)
 	
 	for spell_id in spell_list:
 		var spell = Data.get_spell(spell_id)
 		if spell.is_empty(): continue
 		var cd = unit.cooldowns.get(spell_id, 0)
 		
-		# Create container for spell button + cooldown label
-		var container = VBoxContainer.new()
-		container.alignment = BoxContainer.ALIGNMENT_CENTER
-		container.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		container.add_theme_constant_override("separation", label_spacing)
+		# Main cell container
+		var cell = VBoxContainer.new()
+		cell.alignment = BoxContainer.ALIGNMENT_CENTER
+		cell.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		cell.add_theme_constant_override("separation", 6)
 		
-		# Use text button (no spell icons available yet)
+		# Square button area
+		var frame = PanelContainer.new()
+		frame.custom_minimum_size = button_size
+		frame.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		
+		# 1. SETUP STYLING
+		var normal_style = StyleBoxFlat.new()
+		normal_style.bg_color = Color(0.12, 0.12, 0.18, 1.0)
+		normal_style.set_border_width_all(2)
+		normal_style.border_color = Color(0.4, 0.4, 0.5, 0.6)
+		normal_style.set_corner_radius_all(12)
+		frame.add_theme_stylebox_override("panel", normal_style)
+		cell.add_child(frame)
+		
+		# 2. THE ICON
+		var icon_rect = TextureRect.new()
+		icon_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		icon_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		icon_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		icon_rect.anchor_left = 0.0
+		icon_rect.anchor_top = 0.0
+		icon_rect.anchor_right = 1.0
+		icon_rect.anchor_bottom = 1.0
+		icon_rect.offset_left = 8
+		icon_rect.offset_top = 8
+		icon_rect.offset_right = -8
+		icon_rect.offset_bottom = -8
+		
+		if spell.has("icon_atlas"):
+			var path = spell.icon_atlas.strip_edges()
+			var tex = null
+			
+			# Multi-Format Hyper-Diagnostic Load
+			var fa = FileAccess.open(path, FileAccess.READ)
+			if fa:
+				var flen = fa.get_length()
+				var buffer = fa.get_buffer(flen)
+				var img = Image.new()
+				
+				# Detect format via magic bytes
+				var magic = buffer.slice(0, 4).hex_encode()
+				var err = OK
+				
+				if magic == "89504e47": # PNG
+					err = img.load_png_from_buffer(buffer)
+					print("[UI] Decoding PNG: ", path)
+				elif magic.begins_with("ffd8ff"): # JPEG
+					err = img.load_jpg_from_buffer(buffer)
+					print("[UI] Decoding JPEG (despite .png ext): ", path)
+				else:
+					# Try generic load as last resort
+					err = img.load_from_buffer(buffer)
+					print("[UI] Unknown format magic ", magic, ", trying generic load")
+					
+				if err == OK:
+					tex = ImageTexture.create_from_image(img)
+					print("[UI] SUCCESS: Manual Decode OK")
+				else:
+					printerr("[UI] FAIL: Decode Error ", err, " for magic ", magic)
+			else:
+				# Fallback to standard for robustness
+				tex = load(path)
+			
+			if tex:
+				var atlas = AtlasTexture.new()
+				atlas.atlas = tex
+				atlas.region = spell.get("icon_region", Rect2(0,0,341,341))
+				icon_rect.texture = atlas
+			else:
+				icon_rect.texture = load("res://icon.svg")
+				icon_rect.modulate = Color(1.0, 0.4, 0.4, 0.5) 
+		
+		frame.add_child(icon_rect)
+
+		# 3. INTERACTION & STATUS (Added AFTER Icon to be on top)
 		var btn = Button.new()
-		btn.text = spell.label
 		btn.custom_minimum_size = button_size
-		btn.add_theme_font_size_override("font_size", spell_font_size)
-		btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		btn.flat = true
+		btn.mouse_filter = Control.MOUSE_FILTER_STOP
+		frame.add_child(btn)
 		
-		# Custom tooltip on hover (replaces tooltip_text)
-		btn.mouse_entered.connect(show_spell_tooltip.bind(container, spell.desc))
-		btn.mouse_exited.connect(hide_spell_tooltip)
-		
-		# Visual states
-		if cd > 0:
-			btn.modulate = Color(0.4, 0.4, 0.4)
-			btn.disabled = true
-		elif selected_spell_id == spell_id:
-			btn.modulate = Color(1.2, 1.2, 0.5)
-		
-		# Disable if not my turn in multiplayer
-		var not_my_turn = multiplayer_mode and game_state.turn.currentPlayerId != my_player_id
-		
-		if game_state.winner or not_my_turn:
-			btn.modulate = Color(0.4, 0.4, 0.4)
-			btn.disabled = true
-		
-		# Check AP cost - disable if not enough AP
+		if selected_spell_id == spell_id:
+			var sel_style = normal_style.duplicate()
+			sel_style.border_color = Color(1.0, 0.9, 0.0, 1.0)
+			sel_style.set_border_width_all(4)
+			frame.add_theme_stylebox_override("panel", sel_style)
+
+		var is_btn_disabled = cd > 0 or (multiplayer_mode and game_state.turn.currentPlayerId != my_player_id) or game_state.winner
+		var ap_count = game_state.turn.get("apRemaining", Data.MAX_AP)
 		var ap_cost = spell.get("ap_cost", 0)
-		var current_ap = game_state.turn.get("apRemaining", Data.MAX_AP)
-		if current_ap < ap_cost:
-			btn.modulate = Color(0.5, 0.3, 0.3)
-			btn.disabled = true
 		
-		# Check casts per turn limit
-		var casts_this_turn = 0
-		if unit.has("casts_this_turn"):
-			casts_this_turn = unit.casts_this_turn.get(spell_id, 0)
-		var max_casts = spell.get("casts_per_turn", 1)
-		if casts_this_turn >= max_casts:
-			btn.modulate = Color(0.5, 0.3, 0.5)
-			btn.disabled = true
-		
+		if ap_count < ap_cost:
+			is_btn_disabled = true
+			icon_rect.modulate = Color(1.0, 0.4, 0.4, 0.8)
+			
+		btn.disabled = is_btn_disabled
+		if cd > 0: icon_rect.modulate = Color(0.4, 0.4, 0.4, 0.8)
+
 		btn.pressed.connect(_on_spell_clicked.bind(spell_id))
-		container.add_child(btn)
+		btn.mouse_entered.connect(show_spell_tooltip.bind(btn, spell.label + "\n\n" + spell.desc))
+		btn.mouse_exited.connect(hide_spell_tooltip)
+
 		
-		# Cooldown / AP cost / Casts remaining label
-		var label = Label.new()
+		# 5. OVERLAY (AP COST)
+		var overlay = Label.new()
+		overlay.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+		overlay.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		overlay.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
+		overlay.add_theme_color_override("font_outline_color", Color.BLACK)
+		overlay.add_theme_constant_override("outline_size", 4)
+		overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		
 		if cd > 0:
-			label.text = "CD: %d" % cd
-			label.add_theme_color_override("font_color", Color.RED)
-		elif max_casts > 1:
-			var remaining = max_casts - casts_this_turn
-			label.text = "%d AP (%d/%d)" % [ap_cost, remaining, max_casts]
-			label.add_theme_color_override("font_color", Color.CYAN if remaining > 0 else Color.ORANGE)
+			overlay.text = str(cd)
+			overlay.add_theme_color_override("font_color", Color(1.0, 0.2, 0.2))
+			overlay.add_theme_font_size_override("font_size", int(cost_font_size * 1.6))
 		else:
-			label.text = "%d AP" % ap_cost
-			label.add_theme_color_override("font_color", Color.CYAN)
-		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		label.add_theme_font_size_override("font_size", cost_font_size)
-		container.add_child(label)
+			overlay.text = str(ap_cost)
+			overlay.add_theme_color_override("font_color", Color(0.2, 0.9, 1.0))
+			overlay.add_theme_font_size_override("font_size", int(cost_font_size * 1.1))
 		
-		spell_container.add_child(container)
+		frame.add_child(overlay)
+		
+		# Spell Name Label (below frame)
+		var name_label = Label.new()
+		name_label.text = spell.label
+		name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		name_label.add_theme_font_size_override("font_size", int(BASE_SPELL_LABEL_FONT_SIZE * ui_text_scale))
+		name_label.add_theme_color_override("font_outline_color", Color.BLACK)
+		name_label.add_theme_constant_override("outline_size", 2)
+		cell.add_child(name_label)
+		
+		spell_container.add_child(cell)
 
 
 
